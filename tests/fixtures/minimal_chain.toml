@@ -1,0 +1,11 @@
+[chain]
+name = "minimal"
+description = "Minimum valid chain — single verify step"
+
+[[steps]]
+name = "check"
+type = "verify"
+agent = "none"
+
+[steps.gate]
+command = "echo ok"

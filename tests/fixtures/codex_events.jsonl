@@ -1,0 +1,5 @@
+{"type": "session.start", "session_id": "test-session-1"}
+{"type": "turn.completed", "usage": {"input_tokens": 5000, "cached_input_tokens": 3000, "output_tokens": 1500}}
+{"type": "turn.completed", "usage": {"input_tokens": 8000, "cached_input_tokens": 6000, "output_tokens": 2000}}
+{"type": "turn.completed", "usage": {"input_tokens": 4000, "cached_input_tokens": 2500, "output_tokens": 1000}}
+{"type": "session.end", "session_id": "test-session-1"}

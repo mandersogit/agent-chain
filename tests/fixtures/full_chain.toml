@@ -1,0 +1,88 @@
+[chain]
+name = "full-pipeline"
+description = "Full 5-step pipeline matching the Phase 5 pattern"
+default_timeout = 1800
+
+[vars]
+project_root = "/tmp/test-project"
+task_dir = "workflow/tasks/test-task"
+schema_dir = "schemas"
+
+[[steps]]
+name = "implement"
+type = "implement"
+agent = "codex-cli"
+
+[steps.brief]
+source = "inline"
+text = "Implement the feature described in {{task_dir}}/brief.md"
+
+[steps.agent_config]
+sandbox = "full-auto"
+reasoning_effort = "high"
+output_schema = "{{schema_dir}}/impl_result.schema.json"
+
+[steps.gate]
+command = "echo 'tests passed'"
+expected_exit_code = 0
+
+[[steps]]
+name = "opus-review"
+type = "review"
+agent = "claude-code"
+
+[steps.brief]
+source = "inline"
+text = "Review the implementation and make fixes. Project root: {{project_root}}"
+
+[steps.agent_config]
+model = "opus"
+effort = "high"
+permission_mode = "dangerously-skip-permissions"
+max_turns = 50
+
+[steps.gate]
+command = "echo 'check passed'"
+expected_exit_code = 0
+on_failure = "warn"
+
+[[steps]]
+name = "adversarial"
+type = "review"
+agent = "codex-cli"
+
+[steps.brief]
+source = "inline"
+text = "Perform adversarial security review of the codebase"
+
+[steps.agent_config]
+sandbox = "read-only"
+reasoning_effort = "high"
+
+[[steps]]
+name = "fix-findings"
+type = "fix"
+agent = "claude-code"
+
+[steps.brief]
+source = "inline"
+text = "Fix the findings from the adversarial review at {{previous_step.output_path}}"
+
+[steps.agent_config]
+model = "opus"
+effort = "high"
+permission_mode = "dangerously-skip-permissions"
+max_turns = 50
+
+[steps.gate]
+command = "echo 'tests passed'"
+expected_exit_code = 0
+
+[[steps]]
+name = "verify"
+type = "verify"
+agent = "none"
+
+[steps.gate]
+command = "echo 'all checks passed'"
+expected_exit_code = 0
