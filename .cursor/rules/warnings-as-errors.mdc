@@ -1,0 +1,31 @@
+---
+description: when writing or reviewing Python code
+alwaysApply: true
+---
+# Warnings as Errors
+
+Treat all linter warnings as errors. Code must lint warning-free.
+
+## Handling Warnings
+
+When a warning appears, resolve it in this order:
+
+1. **Fix it.** Most warnings indicate real problems or unnecessary code.
+2. **Delete the code.** Dead code with no concrete near-term use plan should be removed. Git preserves history.
+3. **Silence it with justification.** Only if the warning is fully understood, intentional, and not fixable.
+
+## Python
+
+Use `# noqa: XXXX` (ruff) or `# type: ignore[code]` (mypy/pyright) with a trailing comment explaining why.
+
+```python
+value = some_dynamic_api()  # type: ignore[no-any-return]  # returns int at runtime, untyped upstream
+```
+
+Never use bare `# type: ignore` or `# noqa` without a specific code. Blanket suppression masks unrelated future warnings.
+
+## What This Means in Practice
+
+- `ruff check` and type checkers must produce zero warnings/errors.
+- New `# noqa` annotations require a justifying comment. No silent suppression.
+- During review, any warning is a finding. "It was already there" is not an excuse — fix it or annotate it.

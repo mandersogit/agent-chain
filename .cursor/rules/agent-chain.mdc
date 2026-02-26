@@ -1,0 +1,54 @@
+---
+description: Project overview for agent-chain
+alwaysApply: true
+---
+# agent-chain
+
+Multi-agent chain orchestration CLI. Runs sequences of AI coding agents (codex-cli, claude-code) with structured handoffs, collecting telemetry and producing completion reports.
+
+## Project Structure
+
+```
+agent-chain/
+├── pyproject.toml
+├── Makefile
+├── src/agent_chain/          # Source package (src layout)
+│   ├── __init__.py
+│   ├── __main__.py
+│   ├── cli.py                # click CLI entry point
+│   ├── chain.py              # ChainDefinition, ChainLoader
+│   ├── runner.py             # ChainRunner
+│   ├── report.py             # CompletionReport, ReportWriter
+│   ├── telemetry.py          # TelemetryRecord, aggregation
+│   ├── variables.py          # Template variable resolution
+│   ├── types.py              # Shared types (StepConfig, AgentResult)
+│   └── backends/             # Agent backend implementations
+├── tests/
+├── scripts/commit-helper.py  # Polyglot commit plan executor
+└── workflow/                 # Design docs and working artifacts
+```
+
+## Development Commands
+
+```bash
+make test          # Run all tests
+make test-cov      # Run tests with coverage
+make lint          # Lint with ruff
+make typecheck     # Run mypy + pyright
+make format        # Format with ruff
+make all           # lint + typecheck + test
+make clean         # Remove build artifacts
+make install       # pip install -e '.[dev]' into local.venv
+```
+
+## Python Conventions
+
+- Python 3.11+ only
+- Qualified imports everywhere (see coding-standards.mdc)
+- External imports: underscore prefix (`import click as _click`)
+- Internal imports: no prefix (`import agent_chain.chain as chain`)
+- Modern type hints: `list[str]`, `X | None`, no `typing.List`
+
+## Design Document
+
+The full design lives at `workflow/2026-02-25-agent-chain-tool-design.md`.

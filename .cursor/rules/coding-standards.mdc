@@ -1,0 +1,197 @@
+---
+description: Coding conventions for Python
+globs: ["**/*.py"]
+alwaysApply: true
+---
+# Coding Standards
+
+## Import Style
+
+**Never import symbols directly into the namespace.** Always use qualified imports.
+
+### The Rule
+
+```python
+# ❌ FORBIDDEN - pollutes namespace with imported symbols
+from pathlib import Path
+from typing import Any, Dict
+from agent_chain.chain import ChainDefinition
+
+# ✅ CORRECT - qualified imports
+import pathlib as _pathlib       # External: underscore prefix
+import typing as _typing         # External: underscore prefix
+import agent_chain.chain as chain  # Internal: NO underscore
+
+# Then use qualified names
+path: _pathlib.Path = _pathlib.Path("/tmp")
+data: dict[str, _typing.Any] = {}
+defn = chain.ChainDefinition()
+```
+
+### Why This Convention
+
+1. **Explicit provenance** - Always clear where a symbol comes from
+2. **No namespace pollution** - Module namespace only contains what's defined there
+3. **Easier refactoring** - Grep-friendly, easy to find all uses of a module
+4. **Avoids shadowing** - Can't accidentally shadow builtins or other names
+
+## External vs Internal Imports
+
+**Key distinction:**
+- **External imports** (stdlib, third-party): Use underscore prefix (`_`)
+- **Internal imports** (agent_chain.*): NO underscore prefix
+
+This makes it immediately clear what's part of our codebase vs external dependencies.
+
+### External: Standard Library
+
+```python
+# ✅ CORRECT - underscore prefix for stdlib
+import os as _os
+import sys as _sys
+import json as _json
+import pathlib as _pathlib
+import typing as _typing
+import dataclasses as _dataclasses
+import subprocess as _subprocess
+```
+
+### External: Third-Party Packages
+
+```python
+# ✅ CORRECT - underscore prefix for third-party
+import click as _click
+import pytest as _pytest
+```
+
+### Internal: agent_chain Packages
+
+```python
+# ✅ CORRECT - NO underscore for internal agent_chain imports
+import agent_chain.chain as chain
+import agent_chain.runner as runner
+import agent_chain.report as report
+import agent_chain.types as types
+```
+
+### Why Different Prefixes?
+
+| Import Type | Prefix | Example | Rationale |
+|-------------|--------|---------|-----------|
+| External (stdlib) | `_` | `_json` | Signals "from outside project" |
+| External (third-party) | `_` | `_click` | Signals "from outside project" |
+| Internal (agent_chain) | none | `chain` | Clean names for our own code |
+
+### Exception: `__all__` Exports
+
+In `__init__.py` files that define public APIs, you may import for re-export:
+
+```python
+# In agent_chain/__init__.py - this is acceptable for public API
+from agent_chain.chain import ChainDefinition
+
+__all__ = ["ChainDefinition"]
+```
+
+### Exception: Type Checking Imports
+
+For type annotations that are only used at type-check time:
+
+```python
+import typing as _typing
+
+if _typing.TYPE_CHECKING:
+    import some_heavy_module as _heavy
+```
+
+## Type Hints
+
+**ALWAYS use Python 3.11+ style type hints.** Since we target `python >= 3.11`, all PEP 585 (builtin generics) and PEP 604 (`X | Y` union) forms are available at runtime — no `from __future__ import annotations` needed.
+
+### Prohibited `typing` forms
+
+These are **deprecated** and must never appear in annotations:
+
+| Deprecated form | Replacement |
+|---|---|
+| `_typing.List[X]` | `list[X]` |
+| `_typing.Dict[K, V]` | `dict[K, V]` |
+| `_typing.Tuple[X, ...]` | `tuple[X, ...]` |
+| `_typing.Set[X]` | `set[X]` |
+| `_typing.FrozenSet[X]` | `frozenset[X]` |
+| `_typing.Type[X]` | `type[X]` |
+| `_typing.Optional[X]` | `X \| None` |
+| `_typing.Union[X, Y]` | `X \| Y` |
+| `_typing.Sequence[X]` | `collections.abc.Sequence[X]` |
+| `_typing.Mapping[K, V]` | `collections.abc.Mapping[K, V]` |
+| `_typing.Iterable[X]` | `collections.abc.Iterable[X]` |
+| `_typing.Iterator[X]` | `collections.abc.Iterator[X]` |
+| `_typing.Callable[...]` | `collections.abc.Callable[...]` |
+
+### Allowed `typing` imports
+
+`typing` should only be used for things that have **no builtin equivalent**:
+
+```python
+import typing as _typing
+
+_typing.Any           # no builtin equivalent
+_typing.TypeVar       # no builtin equivalent (until 3.12 syntax)
+_typing.TypeAlias     # no builtin equivalent (until 3.12 syntax)
+_typing.Protocol      # no builtin equivalent
+_typing.TypedDict     # no builtin equivalent
+_typing.Literal       # no builtin equivalent
+_typing.ClassVar      # no builtin equivalent
+_typing.Final         # no builtin equivalent
+_typing.overload      # decorator
+_typing.TYPE_CHECKING # sentinel
+_typing.cast          # function
+_typing.Never         # 3.11+ special form
+_typing.Self          # 3.11+ special form
+```
+
+### Examples
+
+```python
+# ❌ WRONG - deprecated forms
+import typing as _typing
+
+def process(items: _typing.List[str]) -> _typing.Dict[str, int]: ...
+def maybe(x: _typing.Optional[int]) -> _typing.Union[str, int]: ...
+
+# ✅ CORRECT - Python 3.11+ builtins and PEP 604
+def process(items: list[str]) -> dict[str, int]: ...
+def maybe(x: int | None) -> str | int: ...
+
+# ✅ CORRECT - typing only for things without builtin replacements
+import typing as _typing
+
+def callback(fn: _typing.Callable[[str], None]) -> None: ...
+T = _typing.TypeVar("T")
+```
+
+### Enforcement
+
+Enforced by ruff rules `UP006` (PEP 585), `UP007` (PEP 604 Union), `UP035` (deprecated imports), and `UP045` (Optional).
+
+## Docstrings
+
+Use Google-style docstrings:
+
+```python
+def function(arg1: str, arg2: int) -> bool:
+    """Short description.
+
+    Longer description if needed.
+
+    Args:
+        arg1: Description of arg1.
+        arg2: Description of arg2.
+
+    Returns:
+        Description of return value.
+
+    Raises:
+        ValueError: When something is wrong.
+    """
+```

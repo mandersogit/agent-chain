@@ -1,0 +1,77 @@
+---
+alwaysApply: true
+---
+
+# Workflow Folder Rule
+
+## Rule: All AI-Generated Documentation Goes in `workflow/`
+
+When creating documentation, plans, status reports, or tracking files, **always place them in the `workflow/` folder**.
+
+### Files That MUST Go in `workflow/`
+
+- Status reports and progress updates
+- Development plans and roadmaps
+- Architecture notes and design documents
+- Task tracking and TODO lists
+- Meeting notes or conversation summaries
+- Analysis documents
+- Any `.md` file that isn't a standard project file (like README.md)
+
+### Correct Examples
+
+```
+✅ workflow/wasm-sandbox-design.md
+✅ workflow/status-2026-02-21.md
+✅ workflow/phase-0-poc-results.md
+```
+
+### Incorrect Examples
+
+```
+❌ PLAN.md (root level)
+❌ STATUS.md (root level)
+❌ notes.md (root level)
+❌ TODO.md (root level)
+```
+
+### Exceptions (OK at root level)
+
+- `README.md` - Standard project readme
+- `CHANGELOG.md` - Release changelog
+- `CONTRIBUTING.md` - Contribution guidelines
+- `LICENSE` / `LICENSE.md` - License file
+
+### Why This Rule Exists
+
+1. Keeps the project root clean and professional
+2. All AI-generated working documents are in one place
+3. Easy to find project context and history
+4. Clear separation between project files and development artifacts
+
+## Naming Convention
+
+Workflow documents use the format: `{date}-{topic}.md`
+
+- Date format: `YYYY-MM-DD`
+- Topic: kebab-case, descriptive
+- Sidecars: `{date}-{parent-topic}-{sidecar-purpose}.md`
+
+## Frontmatter
+
+Workflow documents should include frontmatter with at minimum:
+
+```markdown
+---
+title: "Descriptive Title"
+date: YYYY-MM-DD
+status: {status}
+---
+```
+
+Valid statuses:
+- **in co-design** — Active design discussion
+- **reference** — Informational, not being actively designed
+- **ready for implementation** — Design complete
+- **implemented** — Built
+- **superseded** — Replaced (include `superseded_by: {filename}`)

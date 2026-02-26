@@ -1,0 +1,77 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+local.venv/
+venv/
+*.venv/
+.venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/settings.json
+*.swp
+*.swo
+*~
+
+# Testing
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+coverage_html/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyright/
+
+# Distribution
+*.manifest
+*.spec
+
+# macOS
+.DS_Store
+
+# Environment files (contain secrets)
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+
+# agent-chain output
+.agent-chain/
+results/
+
+# Workflow (separate git repo)
+workflow/
+
+# Claude Code local settings
+.claude/
+
+# Shared skill symlink (points to specularum repo)
+.cursor/skills/agent-delegation

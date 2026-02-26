@@ -1,0 +1,11 @@
+---
+description: when deciding whether to keep or discard intermediate artifacts
+alwaysApply: true
+---
+# Paper Trail Preference
+
+Keep intermediate artifacts (logs, raw outputs, event streams, build diagnostics) when they contain useful information and storage cost is trivial. Delete only when the artifact is large and low-value, or fully redundant with something already retained.
+
+If an artifact must be deleted (size, sensitivity, ephemeral filesystem), extract the useful information into a retained file first.
+
+**Default: keep.** The burden of proof is on deletion, not retention.

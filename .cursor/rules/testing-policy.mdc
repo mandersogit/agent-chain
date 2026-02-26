@@ -1,0 +1,123 @@
+---
+description: Testing policy - all tests must be honest and non-trivial
+globs:
+  - "**/*.py"
+alwaysApply: false
+---
+# Testing Policy
+
+## Core Principles
+
+Every test must be:
+
+1. **Honest** - Tests what it claims to test, not something weaker
+2. **Non-trivial** - Provides meaningful verification, not just "doesn't crash"
+
+## Forbidden Test Patterns
+
+### 1. Dishonest Tests
+
+Tests that claim to verify behavior but actually test something weaker:
+
+```python
+# ❌ BAD - Claims to test "no API key" but accepts either outcome
+def test_chat_no_api_key(self):
+    result = self.runner.invoke(cli, ["chat", "test"])
+    assert result.exit_code in [0, 1]  # This tests NOTHING
+
+# ❌ BAD - Claims to test specific status but accepts multiple
+def test_api_status(self):
+    data = get_status()
+    assert data["status"] in ["ready", "error", "pending"]  # Meaningless
+```
+
+### 2. Trivial Tests
+
+Tests that don't verify meaningful behavior:
+
+```python
+# ❌ BAD - Just checks a constant
+def test_default_shell(self):
+    assert env.shell_path == "/bin/sh"  # Trivial
+
+# ❌ BAD - Only checks not None
+def test_create_environment(self):
+    result = specularum.Environment()
+    assert result is not None  # Doesn't verify correctness
+```
+
+#### Simple ≠ Trivial
+
+- **Trivial (BAD)**: Would pass regardless of correctness
+- **Simple (OK)**: Easy to understand but guards a specific requirement
+
+Valid simple test types:
+- **Invariant guards**: Catch accidental breakage
+- **Specification tests**: Encode requirements as code
+
+Simple tests must document **Requirement** and **Fails if**.
+
+### 3. Smoke Tests Disguised as Unit Tests
+
+If a test only verifies "doesn't crash", name it honestly:
+
+```python
+# ❌ BAD - Name suggests it tests behavior
+def test_run_echo_with_env(self):
+    result = env.run("echo hello")
+    assert result.returncode in [0, 1]  # Just a smoke test
+
+# ✅ OK - Honest name if smoke test is needed
+def test_run_echo_does_not_crash(self):
+    result = env.run("echo hello")
+    # Explicitly just checking no exception
+```
+
+## Required Test Patterns
+
+### 1. Test Specific Behavior
+
+```python
+# ✅ GOOD - Tests specific expected outcome
+def test_run_echo_returns_stdout(self):
+    """echo hello should produce 'hello\n' on stdout."""
+    result = env.run("echo hello")
+    assert result.stdout == b"hello\n"
+    assert result.returncode == 0
+```
+
+### 2. Isolate External Dependencies
+
+```python
+# ✅ GOOD - Properly isolated from environment
+def test_fs_write_creates_file(self):
+    """Writing a file via VFS should be readable back."""
+    env.fs.write("/tmp/test.txt", b"content")
+    result = env.run("cat /tmp/test.txt")
+    assert result.stdout == b"content"
+```
+
+## When to Delete vs Fix
+
+- **Delete** if the test provides no value even when fixed
+- **Fix** if the test covers important behavior but is poorly written
+- **Never** keep a test that passes for the wrong reasons
+
+## Test Naming
+
+Test names should describe:
+1. What is being tested
+2. The condition/scenario
+3. The expected outcome
+
+```python
+# ✅ GOOD names
+def test_run_echo_returns_stdout(self):
+def test_fs_write_then_read_roundtrips(self):
+def test_command_decorator_registers_handler(self):
+
+# ❌ BAD names
+def test_parse(self):
+def test_error(self):
+def test_it_works(self):
+```

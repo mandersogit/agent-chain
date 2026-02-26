@@ -1,0 +1,36 @@
+---
+description: Python virtual environment conventions
+alwaysApply: true
+---
+# Python Virtual Environment
+
+## Canonical venv
+
+This project uses a single virtual environment at `local.venv/`.
+
+```bash
+# Create the venv
+python3.11 -m venv local.venv
+local.venv/bin/pip install -e '.[dev]'
+```
+
+## Makefile Override
+
+The Makefile uses `PYTHON_EXE` to reference the Python interpreter:
+
+```makefile
+PYTHON_EXE ?= $(CURDIR)/local.venv/bin/python
+```
+
+Override for a different interpreter:
+
+```bash
+PYTHON_EXE=/path/to/python make test
+```
+
+## Rules
+
+- **NEVER** use system Python, conda, or other environments
+- **ALWAYS** use `local.venv/bin/python` or `$(PYTHON_EXE)` in commands
+- **NEVER** create `.venv`, `venv/`, or other alternative venv names
+- Python 3.11+ is required (for `tomllib` stdlib support)

@@ -1,0 +1,121 @@
+---
+alwaysApply: false
+globs: ["workflow/commit-plans/*.yaml", "workflow/commit-plans-workflow/*.yaml"]
+description: Commit plans - read BEFORE creating any commit plan
+---
+
+# Commit Plans
+
+This project uses YAML commit plans instead of direct git commits.
+
+## Dual-Repo Structure
+
+This project has **two git repositories**:
+
+| Repo                    | Root               | Contents                                     | Visibility |
+|-------------------------|--------------------|----------------------------------------------|------------|
+| `agent-chain`           | Project root       | Python package, CLI, build files, tests      | Public     |
+| `agent-chain-workflow`  | `workflow/` subdir | Design docs, research, commit plans          | Private    |
+
+The `workflow/` directory is:
+- **Gitignored** by the main `agent-chain` repo
+- **Its own git repo** (`agent-chain-workflow`)
+
+## Commit Plan Directories
+
+| Directory                         | For Repo                | `repo:` key needed? |
+|-----------------------------------|-------------------------|---------------------|
+| `workflow/commit-plans/`          | `agent-chain` (main)    | Yes (`repo: .`)     |
+| `workflow/commit-plans-workflow/` | `agent-chain-workflow`   | Yes (`repo: workflow`) |
+
+**Note:** Since both plan directories are inside `workflow/` (which has its own `.git`), you must always specify `repo:` explicitly.
+
+## Key Rules
+
+1. **NEVER run `git commit` directly** - Always use commit plans
+2. **NEVER execute commits autonomously** - Only create/preview plans
+3. **Each file can only appear in ONE commit** - The tool stages whole files, not hunks
+4. **Use the correct directory** - Main repo plans vs workflow repo plans
+5. **ALWAYS preview after creating** - Run `commit-helper.py plan.yaml` to validate before presenting to user
+6. **ALWAYS track the commit plan file** - Commit plans should be committed alongside the changes they describe. **Workflow repo plans** (`commit-plans-workflow/`) self-include in their own `files:` list. **Outer repo plans** (`commit-plans/`) cannot self-include (they live in gitignored `workflow/`), so include them in a companion workflow repo commit instead.
+
+## Creating a Commit Plan
+
+### For main repo (`agent-chain`)
+
+Location: `workflow/commit-plans/YYYY-MM-DD-description.yaml`
+
+```yaml
+repo: .    # Required: main repo (relative to cwd)
+
+commits:
+  - message: |
+      type: short description
+
+      Longer explanation if needed.
+    files:
+      - path/to/file1.py
+      - path/to/file2.py
+      # Plan file lives in workflow/ (gitignored) — track it via a workflow repo commit
+```
+
+### For workflow repo (`agent-chain-workflow`)
+
+Location: `workflow/commit-plans-workflow/YYYY-MM-DD-description.yaml`
+
+```yaml
+repo: workflow    # Required: workflow repo (relative to cwd)
+
+commits:
+  - message: |
+      type: short description
+    files:
+      - design-doc.md
+      - commit-plans-workflow/YYYY-MM-DD-description.yaml  # include the plan itself
+```
+
+**Note:** File paths in workflow repo plans are relative to `workflow/`, not the project root.
+
+The `repo:` value is relative to the current working directory when running commit-helper.
+
+## Optional Plan Keys
+
+```yaml
+tag: v1.0.0                      # Optional: create git tag after commits
+tag_message: "Release v1.0.0"   # Optional: makes tag annotated
+deleted:                         # Optional: files to remove
+  - path/to/removed.py
+```
+
+If a file needs changes across multiple logical commits, combine those changes into one commit or structure your work differently.
+
+## Commit Types
+
+`feat:` `fix:` `refactor:` `docs:` `test:` `config:` `security:` `improve:` `chore:`
+
+## Correct Workflow
+
+1. **Create the plan** - Write the YAML file in the appropriate directory
+2. **Preview** - `./scripts/commit-helper.py plan.yaml` (validates files exist)
+3. **Execute** - `./scripts/commit-helper.py plan.yaml --execute`
+
+## Using the Script
+
+**Always invoke the script directly.** It is a polyglot bash/python script that finds the correct Python interpreter itself. Never run `python` or `python3` on it.
+
+```bash
+./scripts/commit-helper.py plan.yaml                    # Preview (safe, always OK)
+./scripts/commit-helper.py plan.yaml --execute          # Execute commits
+./scripts/commit-helper.py plan.yaml --execute --dry-run  # Show commands without running
+```
+
+## What You Can Do Autonomously
+
+| Action                   | Allowed?                          |
+|--------------------------|-----------------------------------|
+| Create commit plan YAML  | Yes                               |
+| Run preview (no execute) | Yes                               |
+| Run execute              | Only with explicit user request   |
+| Add tag to plan          | Only with explicit user request   |
+
+**Tags are releases** — never add `tag:` to a commit plan unless the user explicitly requests a tag/release.
