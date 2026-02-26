@@ -1,0 +1,87 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-chain"
+version = "0.1.0"
+description = "Multi-agent chain orchestration CLI"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+  {name = "agent-chain contributors"},
+]
+keywords = [
+  "agent",
+  "chain",
+  "orchestration",
+  "cli",
+  "multi-agent",
+]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Typing :: Typed",
+]
+dependencies = [
+  "click>=8.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-cov>=4.0",
+  "ruff>=0.4",
+  "mypy>=1.10",
+  "pyright>=1.1",
+]
+
+[project.urls]
+Repository = "https://github.com/mandersogit/agent-chain"
+Issues = "https://github.com/mandersogit/agent-chain/issues"
+
+[project.scripts]
+agent-chain = "agent_chain.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["agent_chain*"]
+
+[tool.setuptools.package-data]
+agent_chain = ["py.typed"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
+
+[tool.mypy]
+strict = true
+python_version = "3.11"
+
+[tool.pyright]
+include = ["src/agent_chain"]
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["agent_chain"]
+
+[tool.coverage.report]
+show_missing = true
