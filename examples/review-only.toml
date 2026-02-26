@@ -1,0 +1,19 @@
+[chain]
+name = "review-only"
+description = "1-step: opus review of the codebase"
+default_timeout = 1800
+
+[[steps]]
+name = "opus-review"
+type = "review"
+agent = "claude-code"
+
+[steps.brief]
+source = "inline"
+text = "Review the codebase for correctness, security issues, and code quality. Report findings."
+
+[steps.agent_config]
+model = "opus"
+effort = "high"
+permission_mode = "dangerously-skip-permissions"
+max_turns = 30

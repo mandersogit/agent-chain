@@ -1,0 +1,69 @@
+[chain]
+name = "b1-readme"
+description = "Write a comprehensive README.md for agent-chain"
+default_timeout = 600
+working_dir = "/home/manderso/git/github/agent-chain"
+
+[[steps]]
+name = "write-readme"
+type = "implement"
+agent = "codex-cli"
+
+[steps.brief]
+source = "inline"
+text = """Write a comprehensive README.md for the agent-chain project, replacing the current stub.
+
+The project is at /home/manderso/git/github/agent-chain/. Read the existing source code in src/agent_chain/ and the existing examples in examples/ to understand the tool.
+
+The README should include:
+
+1. HEADER: Project name, one-line description
+2. OVERVIEW: What agent-chain does (multi-agent chain orchestration CLI), why it exists
+3. INSTALLATION: pip install from source, Python 3.11+ requirement, virtual environment setup
+4. QUICK START: Simple 2-step chain example (codex implement then verify), how to run it
+5. CHAIN DEFINITION FORMAT: Document the TOML format with [chain], [vars], [[steps]] sections. Show all available fields.
+6. BACKENDS: Document codex-cli and claude-code backends, their configuration options, how they are discovered
+7. CLI REFERENCE: All three commands (run, validate, report) with options
+8. TEMPLATE VARIABLES: Built-in variables (chain.*, step.*, previous_step.*) and custom [vars]
+9. EXAMPLES: Reference the examples/ directory, show 2-3 inline examples of increasing complexity
+10. DEVELOPMENT: How to set up for development, run tests, lint, typecheck (reference the Makefile)
+
+Style:
+- Clear, concise technical writing
+- Use code blocks for all examples
+- Use tables for configuration options
+- Keep it under 500 lines
+- No emojis"""
+
+[steps.agent_config]
+sandbox = "full-auto"
+reasoning_effort = "high"
+
+[[steps]]
+name = "polish-readme"
+type = "fix"
+agent = "claude-code"
+
+[steps.brief]
+source = "inline"
+text = """Review and polish the README.md that was just written for the agent-chain project.
+
+Check for:
+1. Technical accuracy: Do all referenced commands actually work? Are CLI flags correct?
+2. Completeness: Are all important features documented?
+3. Code examples: Are they syntactically correct TOML/Python/bash?
+4. Clarity: Is the writing clear and well-organized?
+5. Consistency: Is formatting consistent throughout?
+
+Fix any issues you find directly. Make minimal changes."""
+
+[steps.agent_config]
+model = "haiku"
+effort = "high"
+permission_mode = "dangerously-skip-permissions"
+max_turns = 20
+
+[steps.gate]
+command = "test -f /home/manderso/git/github/agent-chain/README.md && wc -l /home/manderso/git/github/agent-chain/README.md"
+expected_exit_code = 0
+on_failure = "warn"

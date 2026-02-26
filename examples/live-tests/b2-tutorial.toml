@@ -1,0 +1,97 @@
+[chain]
+name = "b2-tutorial"
+description = "Write a tutorial document and example chain for new users"
+default_timeout = 600
+working_dir = "/home/manderso/git/github/agent-chain"
+
+[[steps]]
+name = "write-tutorial"
+type = "implement"
+agent = "claude-code"
+
+[steps.brief]
+source = "inline"
+text = """Write a step-by-step tutorial for new users of agent-chain.
+
+Create two files:
+1. docs/tutorial.md - The tutorial document
+2. docs/example-chain.toml - A working example chain referenced by the tutorial
+
+First create the docs/ directory if it does not exist.
+
+The tutorial should walk a new user through:
+
+1. PREREQUISITES: Python 3.11+, at least one agent CLI installed (codex or claude)
+2. INSTALLATION: Clone repo, create venv, pip install
+3. YOUR FIRST CHAIN: Write a minimal 2-step chain definition (a review step using claude-code haiku + a verify step). Include the complete TOML file.
+4. RUNNING THE CHAIN: agent-chain validate, then agent-chain run -v
+5. READING RESULTS: Where output goes, how to use agent-chain report
+6. TEMPLATE VARIABLES: Show how to use [vars] and built-in variables
+7. MULTI-STEP PIPELINE: Upgrade to a 3-step chain (implement then review then verify)
+8. TROUBLESHOOTING: Common errors and how to fix them
+
+The example-chain.toml should be a simple 2-step chain:
+- Step 1: claude-code haiku reviews a project for code quality (use inline brief)
+- Step 2: verify step that runs echo success
+
+Keep the tutorial under 300 lines. Use clear, friendly language. Include all code blocks needed.
+
+The project source is at /home/manderso/git/github/agent-chain/. Read the existing examples in examples/ to understand the chain format."""
+
+[steps.agent_config]
+model = "haiku"
+effort = "high"
+permission_mode = "dangerously-skip-permissions"
+max_turns = 30
+
+[steps.gate]
+command = "test -f /home/manderso/git/github/agent-chain/docs/tutorial.md && test -f /home/manderso/git/github/agent-chain/docs/example-chain.toml"
+expected_exit_code = 0
+on_failure = "abort"
+
+[[steps]]
+name = "review-tutorial"
+type = "review"
+agent = "codex-cli"
+
+[steps.brief]
+source = "inline"
+text = """Review the tutorial document at docs/tutorial.md and the example chain at docs/example-chain.toml for technical accuracy.
+
+Check:
+1. Are all CLI commands correct? (agent-chain run, validate, report)
+2. Is the TOML chain format documented correctly?
+3. Does the example chain use proper structure? (it should use proper agent names: codex-cli, claude-code, or none)
+4. Are the step types correct? (implement, review, fix, verify, custom)
+5. Is the installation process accurate?
+6. Are there any broken or incorrect code examples?
+
+Report any issues found. Do NOT modify any files."""
+
+[steps.agent_config]
+sandbox = "read-only"
+reasoning_effort = "high"
+
+[[steps]]
+name = "fix-issues"
+type = "fix"
+agent = "claude-code"
+
+[steps.brief]
+source = "inline"
+text = """Fix any issues found by the review in the tutorial (docs/tutorial.md) and example chain (docs/example-chain.toml).
+
+Review output from previous step: {{previous_step.output_path}}
+
+Make minimal, targeted fixes only. Preserve the tutorial's friendly tone and structure."""
+
+[steps.agent_config]
+model = "haiku"
+effort = "high"
+permission_mode = "dangerously-skip-permissions"
+max_turns = 15
+
+[steps.gate]
+command = "local.venv/bin/agent-chain validate docs/example-chain.toml"
+expected_exit_code = 0
+on_failure = "warn"

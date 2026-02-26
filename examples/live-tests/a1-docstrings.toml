@@ -1,0 +1,86 @@
+[chain]
+name = "a1-docstrings"
+description = "Add docstrings to public classes/functions, then review for accuracy"
+default_timeout = 600
+working_dir = "/home/manderso/git/github/agent-chain"
+
+[[steps]]
+name = "add-docstrings"
+type = "implement"
+agent = "codex-cli"
+
+[steps.brief]
+source = "inline"
+text = """Add comprehensive Google-style docstrings to all public classes and functions in the agent-chain Python project that are missing them.
+
+Files to process:
+- src/agent_chain/__init__.py
+- src/agent_chain/chain.py
+- src/agent_chain/cli.py
+- src/agent_chain/runner.py
+- src/agent_chain/report.py
+- src/agent_chain/telemetry.py
+- src/agent_chain/types.py
+- src/agent_chain/variables.py
+- src/agent_chain/backends/__init__.py
+- src/agent_chain/backends/codex_cli.py
+- src/agent_chain/backends/claude_code.py
+- src/agent_chain/backends/noop.py
+
+Rules:
+1. Only add docstrings to PUBLIC classes and functions (no leading underscore) that don't already have one.
+2. Use Google-style docstrings: one-line summary, then Args/Returns/Raises sections as applicable.
+3. Keep docstrings concise and accurate. Do not over-document obvious parameters.
+4. Do NOT modify any function logic or imports. Only add/improve docstrings.
+5. Do NOT add type information in docstrings (it's already in the type hints).
+6. Private functions (prefixed with _) can be skipped unless they are complex enough to warrant documentation."""
+
+[steps.agent_config]
+sandbox = "full-auto"
+reasoning_effort = "high"
+
+[steps.gate]
+command = "local.venv/bin/ruff check src/"
+expected_exit_code = 0
+on_failure = "abort"
+
+[[steps]]
+name = "review-docstrings"
+type = "review"
+agent = "claude-code"
+
+[steps.brief]
+source = "inline"
+text = """Review the docstrings that were just added to the agent-chain Python project for accuracy, completeness, and consistency.
+
+Check all .py files in src/agent_chain/ and src/agent_chain/backends/.
+
+For each docstring, verify:
+1. The one-line summary accurately describes what the function/class does
+2. Args, Returns, and Raises sections are present where applicable
+3. Google-style formatting is used consistently
+4. No inaccurate or misleading descriptions
+5. Parameter names match the actual function signature
+
+If you find any issues, fix them directly. Make minimal changes - only fix actual problems."""
+
+[steps.agent_config]
+model = "haiku"
+effort = "high"
+permission_mode = "dangerously-skip-permissions"
+max_turns = 20
+
+[steps.gate]
+command = "cd /home/manderso/git/github/agent-chain && local.venv/bin/ruff check src/"
+expected_exit_code = 0
+on_failure = "warn"
+
+[[steps]]
+name = "verify"
+type = "verify"
+agent = "none"
+
+[steps.gate]
+command = "cd /home/manderso/git/github/agent-chain && find . -name __pycache__ -exec rm -rf {} + 2>/dev/null; local.venv/bin/python -B -m pytest tests/ -v && local.venv/bin/ruff check src/ && local.venv/bin/python -m mypy src/"
+expected_exit_code = 0
+on_failure = "abort"

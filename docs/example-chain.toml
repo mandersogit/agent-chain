@@ -1,0 +1,64 @@
+# Example chain: Code Quality Review + Verification
+# 
+# This is a simple 2-step chain that:
+# 1. Uses Claude Haiku to review code quality (read-only mode)
+# 2. Verifies successful completion with a simple command
+#
+# Usage:
+#   agent-chain validate docs/example-chain.toml
+#   agent-chain run docs/example-chain.toml -v
+#
+# Customize:
+#   - Change the brief text to review your own project
+#   - Add gate commands to run tests or lints
+#   - Add more steps to implement a full pipeline
+
+[chain]
+name = "example-review"
+description = "Quick code quality review using Claude Haiku"
+default_timeout = 1800
+
+# ─── Step 1: Code Review with Claude Haiku ─────────────────────────
+
+[[steps]]
+name = "code-review"
+type = "review"
+agent = "claude-code"
+
+  [steps.brief]
+  source = "inline"
+  text = """
+  Perform a quick code quality review of the project.
+  
+  Look for:
+  - Unclear variable or function names
+  - Missing error handling
+  - Performance issues
+  - Security concerns
+  - Code duplication
+  
+  For each issue found, provide:
+  1. File and location
+  2. Description of the problem
+  3. Suggested fix (if applicable)
+  
+  Be concise and focus on the most important issues first.
+  """
+
+  [steps.agent_config]
+  model = "haiku"
+  effort = "medium"
+  permission_mode = "plan"
+  max_turns = 10
+
+# ─── Step 2: Verification (no agent required) ──────────────────────
+
+[[steps]]
+name = "verify"
+type = "verify"
+agent = "none"
+
+  [steps.gate]
+  command = "echo 'Code review chain completed successfully'"
+  expected_exit_code = 0
+  on_failure = "abort"

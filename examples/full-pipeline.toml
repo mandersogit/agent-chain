@@ -1,0 +1,89 @@
+[chain]
+name = "full-pipeline"
+description = "5-step pipeline: codex impl → opus review → codex adversarial → opus fix → verify"
+default_timeout = 1800
+
+[vars]
+project_root = "."
+task_dir = "workflow/tasks"
+schema_dir = "schemas"
+
+[[steps]]
+name = "implement"
+type = "implement"
+agent = "codex-cli"
+
+[steps.brief]
+source = "inline"
+text = "Implement the feature described in the task brief. Project root: {{project_root}}"
+
+[steps.agent_config]
+sandbox = "full-auto"
+reasoning_effort = "high"
+output_schema = "{{schema_dir}}/impl_result.schema.json"
+
+[steps.gate]
+command = "echo 'tests passed'"
+expected_exit_code = 0
+
+[[steps]]
+name = "opus-review"
+type = "review"
+agent = "claude-code"
+
+[steps.brief]
+source = "inline"
+text = "Review the implementation for correctness, completeness, and quality. Make fixes as needed."
+
+[steps.agent_config]
+model = "opus"
+effort = "high"
+permission_mode = "dangerously-skip-permissions"
+max_turns = 50
+
+[steps.gate]
+command = "echo 'check passed'"
+expected_exit_code = 0
+on_failure = "warn"
+
+[[steps]]
+name = "adversarial"
+type = "review"
+agent = "codex-cli"
+
+[steps.brief]
+source = "inline"
+text = "Perform an adversarial security and correctness review of the codebase. Focus on edge cases, race conditions, and security vulnerabilities."
+
+[steps.agent_config]
+sandbox = "read-only"
+reasoning_effort = "high"
+output_schema = "{{schema_dir}}/review_findings.schema.json"
+
+[[steps]]
+name = "fix-findings"
+type = "fix"
+agent = "claude-code"
+
+[steps.brief]
+source = "inline"
+text = "Fix all findings from the adversarial review. Review output: {{previous_step.output_path}}"
+
+[steps.agent_config]
+model = "opus"
+effort = "high"
+permission_mode = "dangerously-skip-permissions"
+max_turns = 50
+
+[steps.gate]
+command = "echo 'tests passed'"
+expected_exit_code = 0
+
+[[steps]]
+name = "verify"
+type = "verify"
+agent = "none"
+
+[steps.gate]
+command = "echo 'all checks passed'"
+expected_exit_code = 0

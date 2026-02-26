@@ -1,0 +1,52 @@
+[chain]
+name = "a3-test-coverage"
+description = "Add edge case tests for the chain runner"
+default_timeout = 600
+working_dir = "/home/manderso/git/github/agent-chain"
+
+[[steps]]
+name = "add-edge-tests"
+type = "implement"
+agent = "codex-cli"
+
+[steps.brief]
+source = "inline"
+text = """Add edge case tests for the agent-chain runner to the test suite.
+
+The project uses pytest. Tests are in tests/. Look at existing tests to understand the testing patterns used.
+
+Add a new test file: tests/test_runner_edge_cases.py
+
+Add tests for these edge cases:
+1. EMPTY CHAIN: A chain definition with steps that are all verify type with passing gates (the simplest possible chain). Verify it runs to completion.
+2. ALL GATES FAILING: A chain where the first step's gate fails with on_failure="abort". Verify the chain aborts and remaining steps are not_started.
+3. GATE WARN MODE: A chain where a step's gate fails with on_failure="warn". Verify the chain continues past the warning.
+4. MISSING BRIEF FILE: A step referencing a brief file that does not exist. Verify it returns config_error status.
+5. VARIABLE RESOLUTION: A chain using template variables in brief text and gate commands. Verify variables are correctly substituted.
+
+Rules:
+- Use the noop backend (agent="none") or mock subprocess calls to avoid launching real agents.
+- Test names should follow the pattern: test_<what>_<condition>_<expected>.
+- Import patterns: use qualified imports like `import agent_chain.runner as runner`.
+- Use pytest fixtures and tmp_path for temporary directories.
+- Assertions must be specific and non-trivial. Do NOT write tests that accept multiple outcomes.
+- Look at existing test files for the project's testing conventions before writing new tests."""
+
+[steps.agent_config]
+sandbox = "full-auto"
+reasoning_effort = "high"
+
+[steps.gate]
+command = "find . -name __pycache__ -exec rm -rf {} + 2>/dev/null; local.venv/bin/python -B -m pytest tests/ -v"
+expected_exit_code = 0
+on_failure = "abort"
+
+[[steps]]
+name = "verify"
+type = "verify"
+agent = "none"
+
+[steps.gate]
+command = "cd /home/manderso/git/github/agent-chain && find . -name __pycache__ -exec rm -rf {} + 2>/dev/null; local.venv/bin/python -B -m pytest tests/ -v --tb=short"
+expected_exit_code = 0
+on_failure = "abort"

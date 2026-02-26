@@ -1,0 +1,38 @@
+[chain]
+name = "codex-impl-review"
+description = "2-step: codex implement then codex review"
+default_timeout = 1800
+
+[vars]
+project_root = "."
+task_brief = "Implement the assigned feature from the task specification."
+
+[[steps]]
+name = "implement"
+type = "implement"
+agent = "codex-cli"
+
+[steps.brief]
+source = "inline"
+text = "{{task_brief}}"
+
+[steps.agent_config]
+sandbox = "full-auto"
+reasoning_effort = "high"
+
+[steps.gate]
+command = "echo 'build ok'"
+expected_exit_code = 0
+
+[[steps]]
+name = "review"
+type = "review"
+agent = "codex-cli"
+
+[steps.brief]
+source = "inline"
+text = "Review the implementation for correctness, security, and code quality."
+
+[steps.agent_config]
+sandbox = "read-only"
+reasoning_effort = "high"

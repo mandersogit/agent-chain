@@ -1,0 +1,72 @@
+[chain]
+name = "a2-code-quality"
+description = "Code quality review of runner.py and backends, then fix critical findings"
+default_timeout = 600
+working_dir = "/home/manderso/git/github/agent-chain"
+
+[[steps]]
+name = "adversarial-review"
+type = "review"
+agent = "codex-cli"
+
+[steps.brief]
+source = "inline"
+text = """You are performing an adversarial code review of the agent-chain Python project.
+
+Focus your review on these files:
+- src/agent_chain/runner.py
+- src/agent_chain/backends/codex_cli.py
+- src/agent_chain/backends/claude_code.py
+- src/agent_chain/backends/__init__.py
+
+Look for:
+1. ERROR HANDLING GAPS: uncaught exceptions, missing error paths, bare except clauses
+2. RESOURCE LEAKS: file handles not closed, subprocesses not cleaned up, temp files left behind
+3. SUBPROCESS EDGE CASES: race conditions in signal handling, PID file races, stdin/stdout deadlocks
+4. SIGNAL HANDLING CORRECTNESS: reentrancy issues, signal-unsafe operations in handlers
+5. SECURITY: command injection via template variables, path traversal, untrusted input
+
+For each finding, classify as CRITICAL, MODERATE, or LOW. Provide the file path, line number range, and a clear description of the issue and its impact.
+
+Do NOT modify any files. This is a read-only review."""
+
+[steps.agent_config]
+sandbox = "read-only"
+reasoning_effort = "high"
+
+[[steps]]
+name = "fix-findings"
+type = "fix"
+agent = "claude-code"
+
+[steps.brief]
+source = "inline"
+text = """Review the adversarial code review findings from the previous step and fix any CRITICAL or MODERATE issues found.
+
+The review output is at: {{previous_step.output_path}}
+
+Rules:
+- Only fix CRITICAL and MODERATE findings. Skip LOW findings.
+- Make minimal, targeted fixes. Do not refactor or restructure code beyond what is needed.
+- Preserve the existing code style: qualified imports (import X as _X), modern type hints (X | None not Optional[X]).
+- Do NOT add comments explaining what you changed.
+- If a finding is a false positive, skip it.
+
+Project root: /home/manderso/git/github/agent-chain
+Source files are in src/agent_chain/"""
+
+[steps.agent_config]
+model = "haiku"
+effort = "high"
+permission_mode = "dangerously-skip-permissions"
+max_turns = 30
+
+[[steps]]
+name = "verify"
+type = "verify"
+agent = "none"
+
+[steps.gate]
+command = "local.venv/bin/python -m pytest tests/ -v && local.venv/bin/ruff check src/ && local.venv/bin/python -m mypy src/"
+expected_exit_code = 0
+on_failure = "abort"
