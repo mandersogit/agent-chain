@@ -2,7 +2,7 @@
 Multi-agent chain orchestration CLI for reproducible implementation, review, fix, and verification pipelines.
 
 ## Overview
-`agent-chain` runs a sequence of steps from a TOML chain file. Each step can invoke an agent backend (`codex-cli` or `claude-code`) or run a verification gate only (`agent = "none"`).
+`agent-chain` runs a sequence of steps from a TOML chain file. Each step can invoke an agent backend (`codex-cli`, `claude-code`, or `cursor-cli`) or run a verification gate only (`agent = "none"`).
 
 Why it exists:
 - Make multi-step agent workflows repeatable and auditable.
@@ -21,6 +21,7 @@ Requirements:
 - Optional backend CLIs (depending on your chain):
   - `codex` for `codex-cli` steps
   - `claude` for `claude-code` steps
+  - `cursor-agent` for `cursor-cli` steps
 
 ### Install from source
 ```bash
@@ -140,7 +141,7 @@ on_failure = "abort"
 | --- | --- | --- | --- | --- |
 | `name` | `string` | Yes | - | Unique step name. |
 | `type` | `string` | Yes | - | `implement`, `review`, `fix`, `verify`, `custom`. |
-| `agent` | `string` | Yes | - | `codex-cli`, `claude-code`, or `none`. |
+| `agent` | `string` | Yes | - | `codex-cli`, `claude-code`, `cursor-cli`, or `none`. |
 | `brief` | table | Conditional | - | Required for non-`verify` when `agent != "none"`. |
 | `agent_config` | table | No | `{}` | Backend-specific options. |
 | `gate` | table | Conditional | - | Required for `verify`; optional otherwise. |
@@ -158,6 +159,7 @@ on_failure = "abort"
 | `command` | `string` | No | `""` | Shell command run after successful step execution. |
 | `expected_exit_code` | `int` | No | `0` | Gate passes only when exit code matches. |
 | `on_failure` | `string` | No | `"abort"` | `abort`, `warn`, or `skip`. |
+| `timeout` | `int` | No | `300` | Gate command timeout in seconds. `0` means no limit. |
 
 ### `[steps.agent_config]` fields
 | Field | Type | Applies to | Default | Notes |
@@ -182,11 +184,12 @@ Validation behavior:
 ## Backends
 Built-in backends:
 
-| Backend | `agent` value | Binary | Primary output | Telemetry |
-| --- | --- | --- | --- | --- |
-| Codex CLI | `codex-cli` | `codex` | `output.md` or `output.json` | `events.jsonl` |
-| Claude Code | `claude-code` | `claude` | `raw.json` | `raw.json` |
-| No-op | `none` | none | none | none |
+| Backend | `agent` value | Binary | Provider | Multi-model | Primary output | Telemetry | Token telemetry |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Codex CLI | `codex-cli` | `codex` | OpenAI | No | `output.md` or `output.json` | `events.jsonl` | Yes |
+| Claude Code | `claude-code` | `claude` | Anthropic | `--model` | `raw.json` | `raw.json` | Yes |
+| Cursor CLI | `cursor-cli` | `cursor-wrapper` → `cursor-agent` | Multi (Anthropic, Google, others) | `--model` | `output.jsonl` | `output.jsonl` | No (upstream gap) |
+| No-op | `none` | none | — | — | none | none | — |
 
 ### Backend discovery
 `codex-cli` binary resolution order:
@@ -198,6 +201,34 @@ Built-in backends:
 1. `AGENT_CHAIN_CLAUDE_BIN`
 2. `claude` on `PATH`
 3. `~/.local/bin/claude`
+
+`cursor-cli` binary resolution order:
+1. `AGENT_CHAIN_CURSOR_BIN`
+2. `cursor-wrapper` on `PATH`
+3. `scripts/cursor-wrapper.py` via `sys.executable` (repository-local fallback)
+
+The wrapper script (`cursor-wrapper`) handles cursor-agent's process lifecycle quirks (no clean exit, positional prompt requirement, binary discovery).
+
+### cursor-cli setup
+```bash
+# Install cursor-agent
+curl https://cursor.com/install -fsSL | bash
+# Authenticate
+cursor-agent login
+# Verify available models
+cursor-agent --list-models
+```
+
+### cursor-cli options
+| `agent_config` key | Type | Effect |
+| --- | --- | --- |
+| `model` | `string` | Model identifier (e.g. `opus-4.6`, `gemini-3.1-pro`). |
+| `mode` | `string` | `plan` (read-only) or `ask` (Q&A, read-only). |
+| `force` | `bool` | Allow file modifications (`--force`). Default: `true`. |
+| `sandbox` | `string` | `enabled` or `disabled`. |
+| `max_turns` | `int` | Maximum agent turns; omitted unless explicitly set. |
+| `timeout` | `int` | Step timeout override. |
+| `extra_flags` | `list[string]` | Extra CLI flags appended to command. |
 
 ### codex-cli options
 | `agent_config` key | Type | Effect |
@@ -231,6 +262,7 @@ agent-chain run [OPTIONS] CHAIN_FILE
 | `-v, --verbose` | flag | `false` | Print progress logs to stderr. |
 | `--dry-run` | flag | `false` | Print planned execution without launching agents/gates. |
 | `--timeout` | int | `1800` | Global timeout fallback in seconds. |
+| `--start-from` | string | - | Resume execution from a named step; prior steps are marked SKIPPED. |
 | `--var KEY=VALUE` | repeatable | - | Provide or override template variables. |
 
 If `--output-dir` is omitted, output defaults to:
@@ -301,6 +333,7 @@ The `examples/` directory includes ready-to-run chains:
 examples/codex-impl-review.toml
 examples/review-only.toml
 examples/full-pipeline.toml
+examples/cursor-adversarial-review.toml
 examples/live-tests/*.toml
 ```
 

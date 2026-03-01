@@ -1,0 +1,83 @@
+# Multi-model adversarial review using cursor-cli.
+#
+# cursor-cli provides access to multiple frontier models through a single
+# backend, enabling adversarial multi-model review in a single chain.
+#
+# Prerequisites:
+#   - cursor-agent installed: curl https://cursor.com/install -fsSL | bash
+#   - cursor-agent authenticated: cursor-agent login
+#
+# Usage:
+#   agent-chain validate examples/cursor-adversarial-review.toml \
+#     --var task="Review src/ for bugs and security issues."
+#   agent-chain run -v examples/cursor-adversarial-review.toml \
+#     --var task="Review src/ for bugs and security issues."
+
+[chain]
+name = "adversarial-review"
+description = "Multi-model adversarial review using cursor-cli"
+default_timeout = 3600
+
+[vars]
+task = "Review the codebase for bugs, security issues, and code quality."
+
+# Claude reviews the code (read-only plan mode)
+[[steps]]
+name = "claude-review"
+type = "review"
+agent = "cursor-cli"
+
+[steps.brief]
+source = "inline"
+text = "{{task}} Focus on architectural correctness and edge cases."
+
+[steps.agent_config]
+model = "opus-4.6"
+mode = "plan"
+force = false
+max_turns = 30
+
+# Gemini reviews the same code (read-only plan mode)
+[[steps]]
+name = "gemini-review"
+type = "review"
+agent = "cursor-cli"
+
+[steps.brief]
+source = "inline"
+text = "{{task}} Focus on performance, concurrency, and data handling."
+
+[steps.agent_config]
+model = "gemini-3.1-pro"
+mode = "plan"
+force = false
+max_turns = 30
+
+# Reconcile findings and apply fixes
+[[steps]]
+name = "reconcile"
+type = "fix"
+agent = "cursor-cli"
+
+[steps.brief]
+source = "inline"
+text = """Reconcile findings from two independent reviews:
+- Claude review: {{chain.output_dir}}/steps/claude-review/output.jsonl
+- Gemini review: {{chain.output_dir}}/steps/gemini-review/output.jsonl
+
+Fix all confirmed issues. Dismiss false positives with justification."""
+
+[steps.agent_config]
+model = "opus-4.6"
+force = true
+max_turns = 50
+
+# Verify fixes pass tests
+[[steps]]
+name = "verify"
+type = "verify"
+agent = "none"
+
+[steps.gate]
+command = "make test && make lint"
+expected_exit_code = 0
