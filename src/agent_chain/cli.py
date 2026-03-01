@@ -4,7 +4,7 @@ import datetime as _datetime
 import pathlib as _pathlib
 import sys as _sys
 
-import click as _click
+import click as _click  # pyright: ignore[reportMissingImports]
 
 import agent_chain as _agent_chain
 import agent_chain.backends as _backends
@@ -45,7 +45,7 @@ def main() -> None:
     """Multi-agent chain orchestration CLI."""
 
 
-@main.command()
+@main.command()  # pyright: ignore[reportFunctionMemberAccess]
 @_click.argument("chain_file", type=_click.Path(exists=True))
 @_click.option("-o", "--output-dir", type=_click.Path(), default=None,
                help="Output directory for step results and report.")
@@ -53,8 +53,10 @@ def main() -> None:
                help="Print step progress to stderr.")
 @_click.option("--dry-run", is_flag=True, default=False,
                help="Print what would be executed without launching agents.")
-@_click.option("--timeout", type=int, default=1800,
-               help="Per-step timeout in seconds (default: 1800).")
+@_click.option("--timeout", type=int, default=_types.DEFAULT_STEP_TIMEOUT,
+               help=f"Per-step timeout in seconds (default: {_types.DEFAULT_STEP_TIMEOUT}).")
+@_click.option("--start-from", type=str, default=None,
+               help="Skip steps before the named step and start execution there.")
 @_click.option("--var", multiple=True, callback=_parse_var, expose_value=True,
                help="Set a template variable (KEY=VALUE). Repeatable.")
 def run(
@@ -63,6 +65,7 @@ def run(
     verbose: bool,
     dry_run: bool,
     timeout: int,
+    start_from: str | None,
     var: dict[str, str],
 ) -> None:
     """Run a chain definition file."""
@@ -103,6 +106,7 @@ def run(
         global_timeout=timeout,
         verbose=verbose,
         dry_run=dry_run,
+        start_from=start_from,
     )
 
     results = runner.run()
@@ -130,7 +134,7 @@ def run(
         _sys.exit(1)
 
 
-@main.command()
+@main.command()  # pyright: ignore[reportFunctionMemberAccess]
 @_click.argument("chain_file", type=_click.Path(exists=True))
 @_click.option("--strict", is_flag=True, default=False,
                help="Fail on warnings (missing optional fields, unused variables).")
@@ -165,7 +169,7 @@ def validate(chain_file: str, strict: bool, var: dict[str, str]) -> None:
     _click.echo(f"Valid: {chain_def.name} ({len(chain_def.steps)} steps)")
 
 
-@main.command()
+@main.command()  # pyright: ignore[reportFunctionMemberAccess]
 @_click.argument("output_dir", type=_click.Path(exists=True))
 @_click.option("--format", "output_format", type=_click.Choice(["text", "json", "markdown"]),
                default="text", help="Output format (default: text).")

@@ -69,9 +69,10 @@ class ChainRunner:
         output_dir: _pathlib.Path,
         working_dir: _pathlib.Path,
         cli_vars: dict[str, str] | None = None,
-        global_timeout: int = 1800,
+        global_timeout: int = _types.DEFAULT_STEP_TIMEOUT,
         verbose: bool = False,
         dry_run: bool = False,
+        start_from: str | None = None,
     ) -> None:
         """Initialize a chain runner.
 
@@ -83,6 +84,7 @@ class ChainRunner:
             global_timeout: Global timeout in seconds, used as fallback for per-step timeouts.
             verbose: Print step progress to stderr if True.
             dry_run: If True, print commands without launching agents.
+            start_from: Optional step name to begin execution from.
         """
         self._chain = chain_def
         self._output_dir = output_dir
@@ -91,6 +93,7 @@ class ChainRunner:
         self._global_timeout = global_timeout
         self._verbose = verbose
         self._dry_run = dry_run
+        self._start_from = start_from
         self._active_process: _subprocess.Popen[bytes] | None = None
         self._interrupted = False
         self._last_sigint_time: float = 0.0
@@ -111,6 +114,27 @@ class ChainRunner:
 
         if not self._dry_run:
             self._setup_signal_handlers()
+
+        start_index = 0
+        if self._start_from is not None:
+            start_index = -1
+            for i, step_def in enumerate(self._chain.steps):
+                if step_def.name == self._start_from:
+                    start_index = i
+                    break
+            if start_index < 0:
+                self._log_error(f"Error: start-from step {self._start_from!r} not found")
+                results.append(self._start_from_error_result(self._start_from))
+                if not self._dry_run:
+                    finished_at = _datetime.datetime.now(_datetime.UTC)
+                    _report.write_report(
+                        chain_def=self._chain,
+                        output_dir=self._output_dir,
+                        started_at=started_at,
+                        finished_at=finished_at,
+                        results=results,
+                    )
+                return results
 
         for i, step_def in enumerate(self._chain.steps):
             if self._interrupted:
@@ -134,7 +158,15 @@ class ChainRunner:
                 ))
                 prev_result = results[-1]
                 continue
+
             step_output_dir = steps_dir / step_name_safe
+
+            if i < start_index:
+                skipped_result = self._skipped_result(step_def, step_output_dir)
+                results.append(skipped_result)
+                prev_result = skipped_result
+                continue
+
             step_output_dir.mkdir(exist_ok=True)
 
             variables = self._build_variables(step_def, step_output_dir, prev_result)
@@ -259,7 +291,7 @@ class ChainRunner:
                 raise ValueError(
                     f"Brief file path {file_path} is outside chain base directory {chain_base}"
                 ) from exc
-            text = file_path.read_text()
+            text = file_path.read_text(encoding="utf-8")
         elif source == "inline":
             text = brief.get("text", "")
         else:
@@ -314,7 +346,7 @@ class ChainRunner:
 
             brief_path = step_output_dir / "brief.md"
             if brief_text:
-                brief_path.write_text(brief_text)
+                brief_path.write_text(brief_text, encoding="utf-8")
 
             try:
                 cmd = backend.build_command(
@@ -403,7 +435,7 @@ class ChainRunner:
                         raise exc
 
                     try:
-                        exit_code = proc.wait(timeout=timeout)
+                        exit_code = proc.wait(timeout=timeout if timeout > 0 else None)
                     except _subprocess.TimeoutExpired:
                         self._log(f"  Timeout after {timeout}s, terminating...")
                         self._terminate_process_tree(proc)
@@ -435,8 +467,17 @@ class ChainRunner:
             elif status != _types.StepStatus.TIMEOUT:
                 if exit_code is not None and exit_code < 0:
                     status = _types.StepStatus.CRASHED
+                elif exit_code == 124:
+                    status = _types.StepStatus.TIMEOUT
                 elif exit_code is not None and exit_code != 0:
                     status = _types.StepStatus.FAILED
+
+            if not output_file.exists():
+                recovered = backend.fallback_output_from_telemetry(telemetry_file, output_file)
+                if recovered:
+                    self._log(
+                        f"  Recovered missing output file from telemetry: {output_file.name}"
+                    )
 
             try:
                 telemetry_record = backend.parse_telemetry(telemetry_file, wall_time)
@@ -444,7 +485,7 @@ class ChainRunner:
                 telemetry_record = None
 
             agent_result = _types.AgentResult(
-                exit_code=exit_code or 0,
+                exit_code=exit_code if exit_code is not None else 0,
                 output_path=output_file,
                 telemetry_path=telemetry_file,
                 wall_time_seconds=wall_time,
@@ -454,7 +495,22 @@ class ChainRunner:
 
         gate_result: dict[str, object] | None = None
         if step_def.gate is not None and status == _types.StepStatus.SUCCESS:
-            gate_result = self._run_gate(step_def, step_output_dir, variables)
+            try:
+                gate_result = self._run_gate(step_def, step_output_dir, variables)
+            except TypeError as exc:
+                self._log(f"  Config error: {exc}")
+                return StepResult(
+                    name=step_def.name,
+                    step_type=step_def.step_type,
+                    agent=step_def.agent,
+                    status=_types.StepStatus.CONFIG_ERROR,
+                    wall_time_seconds=wall_time,
+                    exit_code=exit_code,
+                    output_path=agent_result.output_path if agent_result else None,
+                    telemetry_path=agent_result.telemetry_path if agent_result else None,
+                    telemetry=telemetry_record,
+                    gate_result=None,
+                )
             if not gate_result["passed"]:
                 status = _types.StepStatus.GATE_FAILED
 
@@ -494,6 +550,11 @@ class ChainRunner:
         command = _variables.resolve_shell_safe(raw_command, variables)
         expected_exit_code = gate.get("expected_exit_code", 0)
         on_failure = gate.get("on_failure", "abort")
+        gate_timeout = gate.get("timeout", 300)
+        if not isinstance(gate_timeout, int):
+            raise TypeError(
+                f"gate timeout must be an int, got {type(gate_timeout).__name__}"
+            )
 
         self._log(f"  Gate: {command}")
 
@@ -508,7 +569,7 @@ class ChainRunner:
                     stdout=out_f,
                     stderr=err_f,
                     cwd=str(self._working_dir),
-                    timeout=300,
+                    timeout=gate_timeout if gate_timeout != 0 else None,
                 )
             passed = result.returncode == expected_exit_code
         except _subprocess.TimeoutExpired:
@@ -560,7 +621,7 @@ class ChainRunner:
 
         if step_def.gate:
             raw_command = step_def.gate.get("command", "")
-            command = _variables.resolve(raw_command, variables)
+            command = _variables.resolve_shell_safe(raw_command, variables)
             _sys.stderr.write(f"  Gate: {command}\n")
 
         _sys.stderr.write(f"  Output dir: {step_output_dir}\n")
@@ -594,7 +655,9 @@ class ChainRunner:
                     f"timeout must be an int, got {type(timeout).__name__}"
                 )
             return timeout
-        return self._chain.default_timeout or self._global_timeout
+        if self._chain.default_timeout is not None:
+            return self._chain.default_timeout
+        return self._global_timeout
 
     def _check_duplicate_pid(self, step_output_dir: _pathlib.Path) -> None:
         """Check for an existing agent.pid and abort if the process is alive.
@@ -702,6 +765,60 @@ class ChainRunner:
             gate_result=None,
         )
 
+    def _skipped_result(
+        self,
+        step_def: _chain.StepDefinition,
+        step_output_dir: _pathlib.Path,
+    ) -> StepResult:
+        """Create a SKIPPED result for a step bypassed by `--start-from`.
+
+        Args:
+            step_def: The step definition for which to create a skipped result.
+            step_output_dir: Output directory for this step, used to derive
+                the expected output path for non-noop agents.
+
+        Returns:
+            A ``StepResult`` with SKIPPED status.
+        """
+        output_path: _pathlib.Path | None = None
+        if step_def.agent != "none":
+            backend = _backends.get_backend(step_def.agent)
+            output_path = step_output_dir / backend.output_file_name(step_def.agent_config)
+        return StepResult(
+            name=step_def.name,
+            step_type=step_def.step_type,
+            agent=step_def.agent,
+            status=_types.StepStatus.SKIPPED,
+            wall_time_seconds=0.0,
+            exit_code=None,
+            output_path=output_path,
+            telemetry_path=None,
+            telemetry=None,
+            gate_result=None,
+        )
+
+    def _start_from_error_result(self, step_name: str) -> StepResult:
+        """Create a CONFIG_ERROR result for invalid `--start-from` input.
+
+        Args:
+            step_name: Step name passed through ``--start-from``.
+
+        Returns:
+            A ``StepResult`` describing the configuration error.
+        """
+        return StepResult(
+            name=step_name,
+            step_type="custom",
+            agent="none",
+            status=_types.StepStatus.CONFIG_ERROR,
+            wall_time_seconds=0.0,
+            exit_code=None,
+            output_path=None,
+            telemetry_path=None,
+            telemetry=None,
+            gate_result=None,
+        )
+
     def _log(self, message: str) -> None:
         """Log a message to stderr if verbose mode is enabled.
 
@@ -710,3 +827,11 @@ class ChainRunner:
         """
         if self._verbose:
             _sys.stderr.write(message + "\n")
+
+    def _log_error(self, message: str) -> None:
+        """Log an error message to stderr regardless of verbose mode.
+
+        Args:
+            message: Error text to emit.
+        """
+        _sys.stderr.write(message + "\n")

@@ -196,7 +196,7 @@ def load(path: _pathlib.Path) -> ChainDefinition:
     if not isinstance(description, str):
         description = str(description)
 
-    default_timeout = chain_table.get("default_timeout", 1800)
+    default_timeout = chain_table.get("default_timeout", _types.DEFAULT_STEP_TIMEOUT)
     if not isinstance(default_timeout, int):
         raise ValidationError("[chain].default_timeout must be an integer")
 

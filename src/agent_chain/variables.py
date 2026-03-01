@@ -3,7 +3,56 @@
 import re as _re
 import shlex as _shlex
 
-_VAR_PATTERN = _re.compile(r"\{\{(\s*[\w.]+\s*)\}\}")
+_VAR_PATTERN = _re.compile(r"\{\{(\s*[\w.-]+\s*)\}\}")
+_BACKSLASH_SENTINEL = "\x00BACKSLASH\x00"
+_LBRACE_SENTINEL = "\x00LBRACE\x00"
+_RBRACE_SENTINEL = "\x00RBRACE\x00"
+
+
+def _mask_escaped_braces(template: str) -> str:
+    """Protect escaped braces from variable resolution.
+
+    Escaped backslashes (``\\\\``) are masked first so that
+    ``\\\\{{var}}`` resolves to a literal backslash followed by the
+    variable value, rather than being misinterpreted as an escaped brace.
+
+    Args:
+        template: Template text that may contain escaped brace sequences.
+
+    Returns:
+        Template with ``\\\\``, ``\\{{``, and ``\\}}`` replaced with sentinels.
+    """
+    result = template.replace("\\\\", _BACKSLASH_SENTINEL)
+    result = result.replace(r"\{{", _LBRACE_SENTINEL)
+    result = result.replace(r"\}}", _RBRACE_SENTINEL)
+    return result
+
+
+def _unmask_escaped_braces(text: str) -> str:
+    """Restore sentinels into literal sequences.
+
+    Args:
+        text: Text containing escape sentinels.
+
+    Returns:
+        Text where sentinels are converted back to their literal characters.
+    """
+    result = text.replace(_LBRACE_SENTINEL, "{{")
+    result = result.replace(_RBRACE_SENTINEL, "}}")
+    result = result.replace(_BACKSLASH_SENTINEL, "\\")
+    return result
+
+
+def _extract_from_masked(masked_template: str) -> list[str]:
+    """Extract variable names from a masked template.
+
+    Args:
+        masked_template: Template after escaped braces have been masked.
+
+    Returns:
+        List of variable names found in the template.
+    """
+    return [m.group(1).strip() for m in _VAR_PATTERN.finditer(masked_template)]
 
 
 def resolve(template: str, variables: dict[str, str]) -> str:
@@ -26,7 +75,9 @@ def resolve(template: str, variables: dict[str, str]) -> str:
             raise KeyError(f"Undefined variable: {{{{{name}}}}}")
         return variables[name]
 
-    return _VAR_PATTERN.sub(_replace, template)
+    masked = _mask_escaped_braces(template)
+    resolved = _VAR_PATTERN.sub(_replace, masked)
+    return _unmask_escaped_braces(resolved)
 
 
 def extract_variable_names(template: str) -> list[str]:
@@ -38,7 +89,8 @@ def extract_variable_names(template: str) -> list[str]:
     Returns:
         List of variable names found in the template.
     """
-    return [m.group(1).strip() for m in _VAR_PATTERN.finditer(template)]
+    masked = _mask_escaped_braces(template)
+    return _extract_from_masked(masked)
 
 
 def check_undefined(
@@ -54,7 +106,8 @@ def check_undefined(
     Returns:
         List of variable names referenced but not defined.
     """
-    return [name for name in extract_variable_names(template) if name not in variables]
+    masked = _mask_escaped_braces(template)
+    return [name for name in _extract_from_masked(masked) if name not in variables]
 
 
 def resolve_shell_safe(template: str, variables: dict[str, str]) -> str:
@@ -79,4 +132,6 @@ def resolve_shell_safe(template: str, variables: dict[str, str]) -> str:
             raise KeyError(f"Undefined variable: {{{{{name}}}}}")
         return _shlex.quote(variables[name])
 
-    return _VAR_PATTERN.sub(_replace, template)
+    masked = _mask_escaped_braces(template)
+    resolved = _VAR_PATTERN.sub(_replace, masked)
+    return _unmask_escaped_braces(resolved)

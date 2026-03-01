@@ -57,6 +57,29 @@ class TestResolve:
         result = _variables.resolve("{{a}}{{b}}", {"a": "1", "b": "2"})
         assert result == "12"
 
+    def test_resolve_escaped_braces_preserved_as_literal(self) -> None:
+        """Escaped braces render as literal braces without variable lookup."""
+        result = _variables.resolve(r"Code: \{{name\}}", {})
+        assert result == "Code: {{name}}"
+
+    def test_resolve_mixed_escaped_and_real_variables(self) -> None:
+        """Escaped placeholders stay literal while real placeholders resolve."""
+        result = _variables.resolve(
+            r"Literal \{{name\}} and real {{value}}",
+            {"value": "ok"},
+        )
+        assert result == "Literal {{name}} and real ok"
+
+    def test_resolve_hyphenated_variable(self) -> None:
+        """Hyphenated variable names like my-var are resolved."""
+        result = _variables.resolve("{{my-var}}", {"my-var": "value"})
+        assert result == "value"
+
+    def test_resolve_escaped_backslash_before_variable(self) -> None:
+        r"""Escaped backslash before a variable resolves both: \\{{x}} -> \val."""
+        result = _variables.resolve("\\\\{{name}}", {"name": "world"})
+        assert result == "\\world"
+
 
 class TestExtractVariableNames:
     """Tests for variable name extraction."""
@@ -78,6 +101,11 @@ class TestExtractVariableNames:
         """Whitespace inside braces is stripped from extracted names."""
         names = _variables.extract_variable_names("{{ padded }}")
         assert names == ["padded"]
+
+    def test_extract_variable_names_ignores_escaped_braces(self) -> None:
+        """Escaped brace sequences are not treated as template variables."""
+        names = _variables.extract_variable_names(r"\{{ignored\}} {{kept}}")
+        assert names == ["kept"]
 
 
 class TestCheckUndefined:
@@ -104,3 +132,11 @@ class TestCheckUndefined:
             "{{chain.name}}", {"chain.name": "test"}
         )
         assert result == []
+
+    def test_check_undefined_ignores_escaped_braces(self) -> None:
+        """Escaped brace sequences are not reported as undefined variables."""
+        result = _variables.check_undefined(
+            r"{{defined}} \{{ignored\}} {{missing}}",
+            {"defined": "yes"},
+        )
+        assert result == ["missing"]

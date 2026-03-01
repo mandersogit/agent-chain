@@ -61,20 +61,22 @@ class TestValidateCommand:
         assert "Valid" in result.output
 
     def test_validate_invalid_toml(self, tmp_path: _pathlib.Path) -> None:
-        """validate with invalid TOML exits non-zero."""
+        """validate with invalid TOML exits non-zero with error message."""
         bad_file = tmp_path / "bad.toml"
         bad_file.write_text("not valid toml {{{{")
         runner = _click_testing.CliRunner()
         result = runner.invoke(_cli.main, ["validate", str(bad_file)])
         assert result.exit_code != 0
+        assert "Error:" in result.output
 
     def test_validate_missing_fields(self, tmp_path: _pathlib.Path) -> None:
-        """validate with missing required fields exits non-zero."""
+        """validate with missing required fields exits non-zero with error message."""
         bad_file = tmp_path / "bad.toml"
         bad_file.write_text("[chain]\nname = 'test'\n")
         runner = _click_testing.CliRunner()
         result = runner.invoke(_cli.main, ["validate", str(bad_file)])
         assert result.exit_code != 0
+        assert "Error:" in result.output or "Validation error:" in result.output
 
     def test_validate_with_var(self, tmp_path: _pathlib.Path) -> None:
         """validate --var provides variables for template validation."""
@@ -89,7 +91,7 @@ class TestValidateCommand:
         assert result.exit_code == 0
 
     def test_validate_strict_fails_on_warnings(self) -> None:
-        """validate --strict exits non-zero on warnings."""
+        """validate --strict exits non-zero with strict-mode message."""
         runner = _click_testing.CliRunner()
         # full_chain has steps without gates -> warnings
         result = runner.invoke(
@@ -97,6 +99,7 @@ class TestValidateCommand:
             ["validate", "--strict", str(_FIXTURES / "full_chain.toml")],
         )
         assert result.exit_code != 0
+        assert "Warning:" in result.output or "Strict mode:" in result.output
 
 
 class TestRunCommand:
@@ -108,6 +111,21 @@ class TestRunCommand:
         result = runner.invoke(
             _cli.main,
             ["run", "--dry-run", str(_FIXTURES / "minimal_chain.toml")],
+        )
+        assert result.exit_code == 0
+
+    def test_run_dry_run_accepts_start_from(self) -> None:
+        """run --start-from is accepted by CLI parsing."""
+        runner = _click_testing.CliRunner()
+        result = runner.invoke(
+            _cli.main,
+            [
+                "run",
+                "--dry-run",
+                "--start-from",
+                "check",
+                str(_FIXTURES / "minimal_chain.toml"),
+            ],
         )
         assert result.exit_code == 0
 

@@ -1,7 +1,10 @@
 """Tests for the chain runner."""
 
+import os as _os
 import pathlib as _pathlib
 import textwrap as _textwrap
+
+import pytest as _pytest
 
 import agent_chain.chain as _chain
 import agent_chain.runner as _runner
@@ -189,7 +192,7 @@ class TestRunnerEdgeCases:
         chain = _chain.ChainDefinition(
             name="empty",
             description="",
-            default_timeout=1800,
+            default_timeout=_types.DEFAULT_STEP_TIMEOUT,
             working_dir=None,
             variables={},
             steps=[],
@@ -331,7 +334,6 @@ class TestRunnerWithRealSubprocess:
         """)
         chain = _chain.load(_write_chain(tmp_path, toml))
 
-        import os as _os
         _os.environ["AGENT_CHAIN_CODEX_BIN"] = "/bin/echo"
         try:
             output_dir = tmp_path / "output"
@@ -367,7 +369,6 @@ class TestRunnerWithRealSubprocess:
         """)
         chain = _chain.load(_write_chain(tmp_path, toml))
 
-        import os as _os
         _os.environ["AGENT_CHAIN_CODEX_BIN"] = "/bin/false"
         try:
             output_dir = tmp_path / "output"
@@ -404,7 +405,6 @@ class TestRunnerWithRealSubprocess:
         """)
         chain = _chain.load(_write_chain(tmp_path, toml))
 
-        import os as _os
         _os.environ["AGENT_CHAIN_CODEX_BIN"] = str(script)
         try:
             output_dir = tmp_path / "output"
@@ -417,6 +417,154 @@ class TestRunnerWithRealSubprocess:
             assert results[0].status == _types.StepStatus.TIMEOUT
         finally:
             del _os.environ["AGENT_CHAIN_CODEX_BIN"]
+
+
+class TestGateTimeout:
+    """Tests for gate timeout configuration in the runner."""
+
+    def test_gate_default_timeout(
+        self, tmp_path: _pathlib.Path, monkeypatch: _pytest.MonkeyPatch
+    ) -> None:
+        """Gate execution uses 300s timeout when not explicitly configured."""
+        observed_timeouts: list[int | None] = []
+
+        class FakeCompletedProcess:
+            """Minimal completed-process shape for mocked gate execution."""
+
+            def __init__(self, returncode: int) -> None:
+                self.returncode = returncode
+
+        def fake_run(_command: str, **kwargs: object) -> FakeCompletedProcess:
+            observed_timeouts.append(kwargs.get("timeout"))  # type: ignore[arg-type]
+            return FakeCompletedProcess(returncode=0)
+
+        monkeypatch.setattr(_runner._subprocess, "run", fake_run)
+
+        toml = _textwrap.dedent("""\
+            [chain]
+            name = "gate-default-timeout"
+            [[steps]]
+            name = "check"
+            type = "verify"
+            agent = "none"
+            [steps.gate]
+            command = "true"
+        """)
+        chain = _chain.load(_write_chain(tmp_path, toml))
+        runner = _runner.ChainRunner(
+            chain_def=chain,
+            output_dir=tmp_path / "output",
+            working_dir=tmp_path,
+        )
+        results = runner.run()
+        assert results[0].status == _types.StepStatus.SUCCESS
+        assert observed_timeouts == [300]
+
+    def test_gate_custom_timeout(
+        self, tmp_path: _pathlib.Path, monkeypatch: _pytest.MonkeyPatch
+    ) -> None:
+        """Gate execution uses custom timeout when specified in gate config."""
+        observed_timeouts: list[int | None] = []
+
+        class FakeCompletedProcess:
+            """Minimal completed-process shape for mocked gate execution."""
+
+            def __init__(self, returncode: int) -> None:
+                self.returncode = returncode
+
+        def fake_run(_command: str, **kwargs: object) -> FakeCompletedProcess:
+            observed_timeouts.append(kwargs.get("timeout"))  # type: ignore[arg-type]
+            return FakeCompletedProcess(returncode=0)
+
+        monkeypatch.setattr(_runner._subprocess, "run", fake_run)
+
+        toml = _textwrap.dedent("""\
+            [chain]
+            name = "gate-custom-timeout"
+            [[steps]]
+            name = "check"
+            type = "verify"
+            agent = "none"
+            [steps.gate]
+            command = "true"
+            timeout = 600
+        """)
+        chain = _chain.load(_write_chain(tmp_path, toml))
+        runner = _runner.ChainRunner(
+            chain_def=chain,
+            output_dir=tmp_path / "output",
+            working_dir=tmp_path,
+        )
+        results = runner.run()
+        assert results[0].status == _types.StepStatus.SUCCESS
+        assert observed_timeouts == [600]
+
+    def test_gate_timeout_zero_means_no_limit(
+        self, tmp_path: _pathlib.Path, monkeypatch: _pytest.MonkeyPatch
+    ) -> None:
+        """Gate timeout=0 passes None to subprocess.run (no hard deadline)."""
+        observed_timeouts: list[int | None] = []
+
+        class FakeCompletedProcess:
+            """Minimal completed-process shape for mocked gate execution."""
+
+            def __init__(self, returncode: int) -> None:
+                self.returncode = returncode
+
+        def fake_run(_command: str, **kwargs: object) -> FakeCompletedProcess:
+            observed_timeouts.append(kwargs.get("timeout"))  # type: ignore[arg-type]
+            return FakeCompletedProcess(returncode=0)
+
+        monkeypatch.setattr(_runner._subprocess, "run", fake_run)
+
+        toml = _textwrap.dedent("""\
+            [chain]
+            name = "gate-no-timeout"
+            [[steps]]
+            name = "check"
+            type = "verify"
+            agent = "none"
+            [steps.gate]
+            command = "true"
+            timeout = 0
+        """)
+        chain = _chain.load(_write_chain(tmp_path, toml))
+        runner = _runner.ChainRunner(
+            chain_def=chain,
+            output_dir=tmp_path / "output",
+            working_dir=tmp_path,
+        )
+        results = runner.run()
+        assert results[0].status == _types.StepStatus.SUCCESS
+        assert observed_timeouts == [None]
+
+
+    def test_gate_string_timeout_returns_config_error(
+        self, tmp_path: _pathlib.Path
+    ) -> None:
+        """Gate timeout set to a string produces CONFIG_ERROR instead of crashing."""
+        toml = _textwrap.dedent("""\
+            [chain]
+            name = "gate-bad-timeout"
+            [[steps]]
+            name = "check"
+            type = "verify"
+            agent = "none"
+            [steps.gate]
+            command = "true"
+            timeout = "60"
+        """)
+        # TOML parses quoted values as strings, so "60" stays a string.
+        # Manually patch the gate config to inject a string timeout,
+        # since TOML without quotes would parse 60 as int.
+        chain = _chain.load(_write_chain(tmp_path, toml))
+        runner = _runner.ChainRunner(
+            chain_def=chain,
+            output_dir=tmp_path / "output",
+            working_dir=tmp_path,
+        )
+        results = runner.run()
+        assert results[0].status == _types.StepStatus.CONFIG_ERROR
 
 
 class TestRunnerReportGeneration:
@@ -511,3 +659,161 @@ class TestRunnerVariables:
         )
         results = runner.run()
         assert results[0].status == _types.StepStatus.SUCCESS
+
+
+class TestRunnerOutputFallback:
+    """Tests for runner output recovery from backend telemetry."""
+
+    def test_codex_missing_output_is_recovered_from_telemetry(
+        self, tmp_path: _pathlib.Path
+    ) -> None:
+        """If output.md is missing, runner asks backend to recover from telemetry."""
+        script = tmp_path / "fake-codex"
+        script.write_text(
+            "#!/bin/sh\n"
+            "printf '%s\\n' "
+            "'{\"type\":\"message.completed\",\"message\":{\"role\":\"assistant\","
+            "\"content\":[{\"type\":\"output_text\",\"text\":\"Recovered text\"}]}}'\n"
+        )
+        script.chmod(0o755)
+
+        toml = _textwrap.dedent("""\
+            [chain]
+            name = "telemetry-fallback"
+            [[steps]]
+            name = "review"
+            type = "review"
+            agent = "codex-cli"
+            [steps.brief]
+            source = "inline"
+            text = "review"
+        """)
+        chain = _chain.load(_write_chain(tmp_path, toml))
+
+        _os.environ["AGENT_CHAIN_CODEX_BIN"] = str(script)
+        try:
+            output_dir = tmp_path / "output"
+            runner = _runner.ChainRunner(
+                chain_def=chain,
+                output_dir=output_dir,
+                working_dir=tmp_path,
+            )
+            results = runner.run()
+            assert results[0].status == _types.StepStatus.SUCCESS
+            output_path = output_dir / "steps" / "review" / "output.md"
+            assert output_path.exists()
+            assert output_path.read_text() == "Recovered text"
+        finally:
+            del _os.environ["AGENT_CHAIN_CODEX_BIN"]
+
+
+class TestRunnerStartFrom:
+    """Tests for starting chain execution from a named step."""
+
+    def test_start_from_skips_prior_steps_and_runs_target(
+        self, tmp_path: _pathlib.Path
+    ) -> None:
+        """Steps before --start-from are marked SKIPPED and not executed."""
+        toml = _textwrap.dedent("""\
+            [chain]
+            name = "start-from"
+            [[steps]]
+            name = "first"
+            type = "verify"
+            agent = "none"
+            [steps.gate]
+            command = "false"
+            [[steps]]
+            name = "second"
+            type = "verify"
+            agent = "none"
+            [steps.gate]
+            command = "false"
+            [[steps]]
+            name = "third"
+            type = "verify"
+            agent = "none"
+            [steps.gate]
+            command = "true"
+        """)
+        chain = _chain.load(_write_chain(tmp_path, toml))
+
+        runner = _runner.ChainRunner(
+            chain_def=chain,
+            output_dir=tmp_path / "output",
+            working_dir=tmp_path,
+            start_from="third",
+        )
+        results = runner.run()
+
+        assert [result.status for result in results] == [
+            _types.StepStatus.SKIPPED,
+            _types.StepStatus.SKIPPED,
+            _types.StepStatus.SUCCESS,
+        ]
+        assert results[2].gate_result is not None
+        assert results[2].gate_result["passed"] is True
+
+    def test_start_from_skipped_agent_step_has_output_path(
+        self, tmp_path: _pathlib.Path
+    ) -> None:
+        """Skipped non-noop steps have output_path set to expected artifact path."""
+        toml = _textwrap.dedent("""\
+            [chain]
+            name = "skip-output"
+            [[steps]]
+            name = "impl"
+            type = "implement"
+            agent = "codex-cli"
+            [steps.brief]
+            source = "inline"
+            text = "implement"
+            [[steps]]
+            name = "check"
+            type = "verify"
+            agent = "none"
+            [steps.gate]
+            command = "true"
+        """)
+        chain = _chain.load(_write_chain(tmp_path, toml))
+        runner = _runner.ChainRunner(
+            chain_def=chain,
+            output_dir=tmp_path / "output",
+            working_dir=tmp_path,
+            start_from="check",
+        )
+        results = runner.run()
+        assert results[0].status == _types.StepStatus.SKIPPED
+        assert results[0].output_path is not None
+        assert results[0].output_path.name == "output.md"
+        assert results[1].status == _types.StepStatus.SUCCESS
+
+    def test_start_from_invalid_step_returns_config_error(
+        self, tmp_path: _pathlib.Path
+    ) -> None:
+        """Invalid --start-from step name returns CONFIG_ERROR without execution."""
+        toml = _textwrap.dedent("""\
+            [chain]
+            name = "bad-start-from"
+            [[steps]]
+            name = "check"
+            type = "verify"
+            agent = "none"
+            [steps.gate]
+            command = "true"
+        """)
+        chain = _chain.load(_write_chain(tmp_path, toml))
+
+        output_dir = tmp_path / "output"
+        runner = _runner.ChainRunner(
+            chain_def=chain,
+            output_dir=output_dir,
+            working_dir=tmp_path,
+            start_from="missing-step",
+        )
+        results = runner.run()
+
+        assert len(results) == 1
+        assert results[0].status == _types.StepStatus.CONFIG_ERROR
+        assert results[0].name == "missing-step"
+        assert (output_dir / "DONE").read_text().strip() == "failed"

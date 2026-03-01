@@ -7,6 +7,7 @@ import pytest as _pytest
 
 import agent_chain.backends as _backends
 import agent_chain.chain as _chain
+import agent_chain.types as _types
 
 _FIXTURES = _pathlib.Path(__file__).parent / "fixtures"
 
@@ -56,9 +57,9 @@ class TestChainLoad:
         assert review.gate.get("on_failure") == "warn"
 
     def test_load_default_timeout(self) -> None:
-        """Default timeout defaults to 1800 if not specified."""
+        """Default timeout uses the shared type-level default."""
         chain = _chain.load(_FIXTURES / "minimal_chain.toml")
-        assert chain.default_timeout == 1800
+        assert chain.default_timeout == _types.DEFAULT_STEP_TIMEOUT
 
     def test_load_missing_chain_table_raises(self, tmp_path: _pathlib.Path) -> None:
         """Loading TOML without [chain] table raises ValidationError."""
