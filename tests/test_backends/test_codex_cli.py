@@ -133,11 +133,12 @@ class TestCodexParseTelemetry:
         assert record["fresh_input_tokens"] == 5500
         assert record["output_tokens"] == 4500
         assert record["num_turns"] == 3
+        assert record["tokens_available"] is True
         assert record["wall_time_seconds"] == 100.0
         assert record["shadow_cost_usd"] is None
 
     def test_parse_empty_file(self, tmp_path: _pathlib.Path) -> None:
-        """Empty telemetry file produces zero counts."""
+        """Empty telemetry file produces zero counts and tokens_available=False."""
         empty = tmp_path / "empty.jsonl"
         empty.write_text("")
         backend = _codex_cli.CodexCliBackend()
@@ -145,13 +146,15 @@ class TestCodexParseTelemetry:
         assert record["total_input_tokens"] == 0
         assert record["num_turns"] == 0
         assert record["wall_time_seconds"] == 50.0
+        assert record["tokens_available"] is False
 
     def test_parse_nonexistent_file(self, tmp_path: _pathlib.Path) -> None:
-        """Non-existent telemetry file produces zero counts."""
+        """Non-existent telemetry file produces zero counts and tokens_available=False."""
         backend = _codex_cli.CodexCliBackend()
         record = backend.parse_telemetry(tmp_path / "missing.jsonl", 30.0)
         assert record["num_turns"] == 0
         assert record["wall_time_seconds"] == 30.0
+        assert record["tokens_available"] is False
 
 
 class TestCodexFileNames:
@@ -172,3 +175,47 @@ class TestCodexFileNames:
         """telemetry_file_name is always events.jsonl."""
         backend = _codex_cli.CodexCliBackend()
         assert backend.telemetry_file_name() == "events.jsonl"
+
+
+class TestCodexFallbackOutputFromTelemetry:
+    """Tests for Codex output recovery from telemetry data."""
+
+    def test_recovers_output_from_message_completed(self, tmp_path: _pathlib.Path) -> None:
+        """The last assistant message.completed event is written to output path."""
+        telemetry = tmp_path / "events.jsonl"
+        telemetry.write_text(
+            "\n".join(
+                [
+                    (
+                        '{"type":"message.completed","message":{"role":"assistant","content":'
+                        '[{"type":"output_text","text":"first"}]}}'
+                    ),
+                    (
+                        '{"type":"message.completed","message":{"role":"assistant","content":'
+                        '[{"type":"output_text","text":"second"}]}}'
+                    ),
+                ]
+            )
+            + "\n"
+        )
+        output = tmp_path / "output.md"
+
+        backend = _codex_cli.CodexCliBackend()
+        recovered = backend.fallback_output_from_telemetry(telemetry, output)
+
+        assert recovered is True
+        assert output.read_text() == "second"
+
+    def test_recovers_output_from_turn_completed(self, tmp_path: _pathlib.Path) -> None:
+        """turn.completed payload text can be used as fallback output."""
+        telemetry = tmp_path / "events.jsonl"
+        telemetry.write_text(
+            '{"type":"turn.completed","turn":{"output":[{"type":"text","text":"turn text"}]}}\n'
+        )
+        output = tmp_path / "output.md"
+
+        backend = _codex_cli.CodexCliBackend()
+        recovered = backend.fallback_output_from_telemetry(telemetry, output)
+
+        assert recovered is True
+        assert output.read_text() == "turn text"

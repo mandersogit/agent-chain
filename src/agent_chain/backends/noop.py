@@ -59,8 +59,14 @@ class NoopBackend(_backends.AgentBackend):
             cached_input_tokens=0,
             output_tokens=0,
             total_input_tokens=0,
-            num_turns=0,
+            tokens_available=False,
             wall_time_seconds=wall_time_seconds,
+            api_time_seconds=None,
+            num_turns=0,
+            num_tool_calls=0,
+            num_thinking_events=0,
+            model=None,
+            backend=self.name(),
             shadow_cost_usd=None,
         )
 

@@ -11,14 +11,26 @@ def _make_record(
     turns: int = 0,
     wall: float = 0.0,
     cost: float | None = None,
+    tokens_available: bool = True,
+    api_time: float | None = None,
+    num_tool_calls: int = 0,
+    num_thinking_events: int = 0,
+    model: str | None = None,
+    backend: str | None = None,
 ) -> _types.TelemetryRecord:
     return _types.TelemetryRecord(
         fresh_input_tokens=fresh,
         cached_input_tokens=cached,
         output_tokens=output,
         total_input_tokens=fresh + cached,
-        num_turns=turns,
+        tokens_available=tokens_available,
         wall_time_seconds=wall,
+        api_time_seconds=api_time,
+        num_turns=turns,
+        num_tool_calls=num_tool_calls,
+        num_thinking_events=num_thinking_events,
+        model=model,
+        backend=backend,
         shadow_cost_usd=cost,
     )
 
@@ -90,8 +102,14 @@ class TestAggregatedTelemetry:
             cached_input_tokens=11500,
             output_tokens=4500,
             total_input_tokens=17000,
-            num_turns=3,
+            tokens_available=True,
             wall_time_seconds=100.0,
+            api_time_seconds=None,
+            num_turns=3,
+            num_tool_calls=0,
+            num_thinking_events=0,
+            model=None,
+            backend="codex-cli",
             shadow_cost_usd=None,
         )
         expected = record["fresh_input_tokens"] + record["cached_input_tokens"]
@@ -106,9 +124,76 @@ class TestAggregatedTelemetry:
             cached_input_tokens=3250000,
             output_tokens=25000,
             total_input_tokens=3250150,
-            num_turns=35,
+            tokens_available=True,
             wall_time_seconds=120.35,
+            api_time_seconds=None,
+            num_turns=35,
+            num_tool_calls=0,
+            num_thinking_events=0,
+            model="claude-sonnet-4-6",
+            backend="claude-code",
             shadow_cost_usd=2.99,
         )
         expected = record["fresh_input_tokens"] + record["cached_input_tokens"]
         assert record["total_input_tokens"] == expected
+
+    def test_tokens_available_all_true_when_all_backends_support(self) -> None:
+        """tokens_available is True when all records have tokens_available=True."""
+        agg = _telemetry.AggregatedTelemetry()
+        agg.add(_make_record(fresh=100, tokens_available=True))
+        agg.add(_make_record(fresh=200, tokens_available=True))
+        totals = agg.totals()
+        assert totals["tokens_available"] is True
+
+    def test_tokens_available_false_when_any_backend_lacks_tokens(self) -> None:
+        """tokens_available is False when any record has tokens_available=False."""
+        agg = _telemetry.AggregatedTelemetry()
+        agg.add(_make_record(fresh=100, tokens_available=True))
+        agg.add(_make_record(fresh=0, tokens_available=False))
+        totals = agg.totals()
+        assert totals["tokens_available"] is False
+
+    def test_num_tool_calls_summed_across_records(self) -> None:
+        """num_tool_calls is summed across all records."""
+        agg = _telemetry.AggregatedTelemetry()
+        agg.add(_make_record(num_tool_calls=3))
+        agg.add(_make_record(num_tool_calls=7))
+        totals = agg.totals()
+        assert totals["num_tool_calls"] == 10
+
+    def test_num_thinking_events_summed_across_records(self) -> None:
+        """num_thinking_events is summed across all records."""
+        agg = _telemetry.AggregatedTelemetry()
+        agg.add(_make_record(num_thinking_events=2))
+        agg.add(_make_record(num_thinking_events=5))
+        totals = agg.totals()
+        assert totals["num_thinking_events"] == 7
+
+    def test_api_time_summed_when_all_present(self) -> None:
+        """api_time_seconds is summed when all records have a value."""
+        agg = _telemetry.AggregatedTelemetry()
+        agg.add(_make_record(api_time=10.0))
+        agg.add(_make_record(api_time=20.0))
+        totals = agg.totals()
+        assert totals["api_time_seconds"] == 30.0
+
+    def test_api_time_none_when_any_record_lacks_it(self) -> None:
+        """api_time_seconds is None when any record has api_time_seconds=None."""
+        agg = _telemetry.AggregatedTelemetry()
+        agg.add(_make_record(api_time=10.0))
+        agg.add(_make_record(api_time=None))
+        totals = agg.totals()
+        assert totals["api_time_seconds"] is None
+
+    def test_empty_aggregation_tokens_available_true(self) -> None:
+        """Empty aggregation defaults tokens_available to True."""
+        agg = _telemetry.AggregatedTelemetry()
+        totals = agg.totals()
+        assert totals["tokens_available"] is True
+
+    def test_empty_aggregation_activity_counts_zero(self) -> None:
+        """Empty aggregation has zero tool calls and thinking events."""
+        agg = _telemetry.AggregatedTelemetry()
+        totals = agg.totals()
+        assert totals["num_tool_calls"] == 0
+        assert totals["num_thinking_events"] == 0

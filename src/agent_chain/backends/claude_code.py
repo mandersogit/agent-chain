@@ -14,6 +14,14 @@ _FALLBACK_PATH = _pathlib.Path.home() / ".local" / "bin" / "claude"
 
 
 def _find_binary() -> _pathlib.Path:
+    """Locate the Claude Code CLI binary.
+
+    Discovery order is environment variable override, PATH lookup,
+    then ``~/.local/bin/claude`` fallback.
+
+    Returns:
+        Resolved path to the Claude CLI binary.
+    """
     env = _os.environ.get(_ENV_VAR)
     if env:
         return _pathlib.Path(env)
@@ -79,10 +87,11 @@ class ClaudeCodeBackend(_backends.AgentBackend):
         else:
             cmd.append("--dangerously-skip-permissions")
 
-        max_turns = config.get("max_turns", 50)
-        if not isinstance(max_turns, int):
-            raise TypeError(f"max_turns must be an int, got {type(max_turns).__name__}")
-        cmd += ["--max-turns", str(max_turns)]
+        if "max_turns" in config:
+            max_turns = config["max_turns"]
+            if not isinstance(max_turns, int):
+                raise TypeError(f"max_turns must be an int, got {type(max_turns).__name__}")
+            cmd += ["--max-turns", str(max_turns)]
 
         if "output_schema" in config:
             output_schema = config["output_schema"]
@@ -132,12 +141,18 @@ class ClaudeCodeBackend(_backends.AgentBackend):
                 cached_input_tokens=0,
                 output_tokens=0,
                 total_input_tokens=0,
-                num_turns=0,
+                tokens_available=False,
                 wall_time_seconds=wall_time_seconds,
+                api_time_seconds=None,
+                num_turns=0,
+                num_tool_calls=0,
+                num_thinking_events=0,
+                model=None,
+                backend=self.name(),
                 shadow_cost_usd=None,
             )
 
-        data = _json.loads(telemetry_path.read_text())
+        data = _json.loads(telemetry_path.read_text(encoding="utf-8"))
         usage = data.get("usage", {})
 
         # Claude Code: input_tokens = fresh only. Cache is separate.
@@ -152,13 +167,25 @@ class ClaudeCodeBackend(_backends.AgentBackend):
             duration_ms / 1000.0 if duration_ms is not None else wall_time_seconds
         )
 
+        content = data.get("content", [])
+        num_tool_calls = sum(
+            1 for block in content
+            if isinstance(block, dict) and block.get("type") == "tool_use"
+        )
+
         return _types.TelemetryRecord(
             fresh_input_tokens=fresh,
             cached_input_tokens=cached,
             output_tokens=output,
             total_input_tokens=fresh + cached,
-            num_turns=data.get("num_turns", 0),
+            tokens_available=True,
             wall_time_seconds=effective_wall_time,
+            api_time_seconds=None,
+            num_turns=data.get("num_turns", 0),
+            num_tool_calls=num_tool_calls,
+            num_thinking_events=0,
+            model=data.get("model"),
+            backend=self.name(),
             shadow_cost_usd=data.get("total_cost_usd"),
         )
 

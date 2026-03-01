@@ -131,13 +131,12 @@ def build_report(
         step_dicts.append(_build_step_dict(r, output_dir))
         if r.telemetry is not None:
             agg.add(r.telemetry)
-        if r.status == _types.StepStatus.SUCCESS or r.status == _types.StepStatus.GATE_FAILED:
+        if r.status in (_types.StepStatus.SUCCESS, _types.StepStatus.GATE_FAILED):
             steps_completed += 1
-        elif r.status == _types.StepStatus.NOT_STARTED or r.status == _types.StepStatus.SKIPPED:
+        elif r.status in (_types.StepStatus.NOT_STARTED, _types.StepStatus.SKIPPED):
             steps_skipped += 1
         else:
-            if r.status not in (_types.StepStatus.NOT_STARTED, _types.StepStatus.SKIPPED):
-                steps_failed += 1
+            steps_failed += 1
 
     totals = agg.totals()
     totals["steps_completed"] = steps_completed
@@ -252,10 +251,23 @@ def render_report(
 
         if include_telemetry and step.get("telemetry"):
             t = step["telemetry"]
-            t_in = t.get("total_input_tokens", 0)
-            t_out = t.get("output_tokens", 0)
-            lines.append(f"    Tokens: {t_in} in, {t_out} out")
+            if t.get("tokens_available", True):
+                t_in = t.get("total_input_tokens", 0)
+                t_out = t.get("output_tokens", 0)
+                lines.append(f"    Tokens: {t_in} in, {t_out} out")
+            else:
+                lines.append("    Tokens: N/A")
             lines.append(f"    Turns: {t.get('num_turns', 0)}")
+            num_tool_calls = t.get("num_tool_calls", 0)
+            if num_tool_calls:
+                lines.append(f"    Tool calls: {num_tool_calls}")
+            num_thinking = t.get("num_thinking_events", 0)
+            if num_thinking:
+                lines.append(f"    Thinking events: {num_thinking}")
+            if t.get("model"):
+                lines.append(f"    Model: {t['model']}")
+            if t.get("backend"):
+                lines.append(f"    Backend: {t['backend']}")
             if t.get("shadow_cost_usd") is not None:
                 lines.append(f"    Cost: ${t['shadow_cost_usd']:.2f}")
 
@@ -265,8 +277,12 @@ def render_report(
     else:
         lines.append("Totals:")
 
-    lines.append(f"  Input tokens: {totals.get('total_input_tokens', 0)}")
-    lines.append(f"  Output tokens: {totals.get('output_tokens', 0)}")
+    if totals.get("tokens_available", True):
+        lines.append(f"  Input tokens: {totals.get('total_input_tokens', 0)}")
+        lines.append(f"  Output tokens: {totals.get('output_tokens', 0)}")
+    else:
+        lines.append("  Input tokens: N/A (some steps have no token data)")
+        lines.append("  Output tokens: N/A (some steps have no token data)")
     lines.append(f"  Turns: {totals.get('num_turns', 0)}")
     lines.append(f"  Wall time: {totals.get('wall_time_seconds', 0):.1f}s")
     if totals.get("shadow_cost_usd") is not None:

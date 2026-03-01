@@ -62,10 +62,21 @@ class TestClaudeCodeBuildCommand:
         )
         assert "--dangerously-skip-permissions" in cmd
 
-    def test_max_turns(self) -> None:
-        """max_turns is passed via --max-turns."""
+    def test_max_turns_omitted_by_default(self) -> None:
+        """--max-turns is omitted when max_turns is not explicitly configured."""
         backend = _claude_code.ClaudeCodeBackend()
-        config = _types.StepConfig(max_turns=30)
+        cmd = backend.build_command(
+            brief_path=_pathlib.Path("/tmp/brief.md"),
+            step_output_dir=_pathlib.Path("/tmp/out"),
+            working_dir=_pathlib.Path("/tmp/project"),
+            config=_types.StepConfig(),
+        )
+        assert "--max-turns" not in cmd
+
+    def test_max_turns_explicit(self) -> None:
+        """Explicit max_turns is passed via --max-turns."""
+        backend = _claude_code.ClaudeCodeBackend()
+        config = _types.StepConfig(max_turns=80)
         cmd = backend.build_command(
             brief_path=_pathlib.Path("/tmp/brief.md"),
             step_output_dir=_pathlib.Path("/tmp/out"),
@@ -73,7 +84,7 @@ class TestClaudeCodeBuildCommand:
             config=config,
         )
         idx = cmd.index("--max-turns")
-        assert cmd[idx + 1] == "30"
+        assert cmd[idx + 1] == "80"
 
     def test_effort_flag(self) -> None:
         """effort is passed via --effort."""
@@ -147,12 +158,13 @@ class TestClaudeCodeParseTelemetry:
         assert record["shadow_cost_usd"] == 2.99
 
     def test_parse_nonexistent_file(self, tmp_path: _pathlib.Path) -> None:
-        """Non-existent file produces zero counts."""
+        """Non-existent file produces zero counts and tokens_available=False."""
         backend = _claude_code.ClaudeCodeBackend()
         record = backend.parse_telemetry(tmp_path / "missing.json", 60.0)
         assert record["total_input_tokens"] == 0
         assert record["num_turns"] == 0
         assert record["wall_time_seconds"] == 60.0
+        assert record["tokens_available"] is False
 
     def test_parse_no_duration_ms_uses_wall_time(self, tmp_path: _pathlib.Path) -> None:
         """When duration_ms is absent, falls back to wall_time_seconds arg."""

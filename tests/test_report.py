@@ -190,8 +190,14 @@ class TestRenderReport:
             cached_input_tokens=200,
             output_tokens=50,
             total_input_tokens=300,
-            num_turns=5,
+            tokens_available=True,
             wall_time_seconds=30.0,
+            api_time_seconds=None,
+            num_turns=5,
+            num_tool_calls=0,
+            num_thinking_events=0,
+            model=None,
+            backend="claude-code",
             shadow_cost_usd=1.50,
         )
         results = [_make_step_result(name="check", telemetry=telemetry)]
@@ -204,3 +210,59 @@ class TestRenderReport:
         )
         assert "Tokens:" in rendered
         assert "Turns:" in rendered
+
+    def test_render_tokens_not_available_shows_na(self, tmp_path: _pathlib.Path) -> None:
+        """tokens_available=False renders 'N/A' instead of token counts."""
+        chain = _chain.load(_FIXTURES / "minimal_chain.toml")
+        telemetry = _types.TelemetryRecord(
+            fresh_input_tokens=0,
+            cached_input_tokens=0,
+            output_tokens=0,
+            total_input_tokens=0,
+            tokens_available=False,
+            wall_time_seconds=5.0,
+            api_time_seconds=None,
+            num_turns=0,
+            num_tool_calls=0,
+            num_thinking_events=0,
+            model=None,
+            backend="none",
+            shadow_cost_usd=None,
+        )
+        results = [_make_step_result(name="verify", telemetry=telemetry)]
+        started = _datetime.datetime(2026, 2, 25, 14, 0, 0, tzinfo=_UTC)
+        finished = _datetime.datetime(2026, 2, 25, 14, 0, 5, tzinfo=_UTC)
+
+        report_path = _report.write_report(chain, tmp_path, started, finished, results)
+        rendered = _report.render_report(
+            report_path, output_format="text", include_telemetry=True
+        )
+        assert "N/A" in rendered
+        # Should not show a numeric token count
+        assert "Tokens: 0 in" not in rendered
+
+    def test_render_totals_tokens_not_available_shows_na(self, tmp_path: _pathlib.Path) -> None:
+        """Chain totals show N/A for token counts when tokens_available is False."""
+        chain = _chain.load(_FIXTURES / "minimal_chain.toml")
+        telemetry = _types.TelemetryRecord(
+            fresh_input_tokens=0,
+            cached_input_tokens=0,
+            output_tokens=0,
+            total_input_tokens=0,
+            tokens_available=False,
+            wall_time_seconds=5.0,
+            api_time_seconds=None,
+            num_turns=0,
+            num_tool_calls=0,
+            num_thinking_events=0,
+            model=None,
+            backend="none",
+            shadow_cost_usd=None,
+        )
+        results = [_make_step_result(name="verify", telemetry=telemetry)]
+        started = _datetime.datetime(2026, 2, 25, 14, 0, 0, tzinfo=_UTC)
+        finished = _datetime.datetime(2026, 2, 25, 14, 0, 5, tzinfo=_UTC)
+
+        report_path = _report.write_report(chain, tmp_path, started, finished, results)
+        rendered = _report.render_report(report_path, output_format="text")
+        assert "N/A" in rendered
