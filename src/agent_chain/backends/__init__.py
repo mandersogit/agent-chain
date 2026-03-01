@@ -77,14 +77,34 @@ class AgentBackend(_abc.ABC):
         """
         ...
 
+    def fallback_output_from_telemetry(
+        self,
+        telemetry_path: _pathlib.Path,
+        output_path: _pathlib.Path,
+    ) -> bool:
+        """Attempt to reconstruct missing output from backend telemetry.
+
+        Args:
+            telemetry_path: Path to the backend telemetry artifact.
+            output_path: Path where the primary output artifact should be written.
+
+        Returns:
+            ``True`` when output was recovered and written, else ``False``.
+        """
+        del telemetry_path
+        del output_path
+        return False
+
 
 import agent_chain.backends.claude_code as _claude_code  # noqa: E402
 import agent_chain.backends.codex_cli as _codex_cli  # noqa: E402
+import agent_chain.backends.cursor_cli as _cursor_cli  # noqa: E402
 import agent_chain.backends.noop as _noop  # noqa: E402
 
 REGISTRY: dict[str, type[AgentBackend]] = {
     "codex-cli": _codex_cli.CodexCliBackend,
     "claude-code": _claude_code.ClaudeCodeBackend,
+    "cursor-cli": _cursor_cli.CursorCliBackend,
     "none": _noop.NoopBackend,
 }
 
