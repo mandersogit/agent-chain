@@ -1,7 +1,8 @@
 ---
 description: Testing policy - all tests must be honest and non-trivial
-globs:
+globs: &patterns
   - "**/*.py"
+paths: *patterns
 alwaysApply: false
 ---
 # Testing Policy

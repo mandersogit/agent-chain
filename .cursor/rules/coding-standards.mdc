@@ -1,6 +1,7 @@
 ---
 description: Coding conventions for Python
-globs: ["**/*.py"]
+globs: &patterns ["**/*.py"]
+paths: *patterns
 alwaysApply: true
 ---
 # Coding Standards

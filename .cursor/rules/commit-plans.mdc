@@ -1,6 +1,7 @@
 ---
 alwaysApply: false
-globs: ["workflow/commit-plans/*.yaml", "workflow/commit-plans-workflow/*.yaml"]
+globs: &patterns ["workflow/commit-plans/*.yaml", "workflow/commit-plans-workflow/*.yaml"]
+paths: *patterns
 description: Commit plans - read BEFORE creating any commit plan
 ---
 

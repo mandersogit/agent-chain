@@ -1,6 +1,7 @@
 ---
 alwaysApply: true
-globs: ["**/*.md"]
+globs: &patterns ["**/*.md"]
+paths: *patterns
 description: All markdown files must have YAML frontmatter
 ---
 

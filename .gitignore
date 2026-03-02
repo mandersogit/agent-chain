@@ -70,8 +70,6 @@ results/
 # Workflow (separate git repo)
 workflow/
 
-# Claude Code local settings
-.claude/
 
 # Shared skill symlink (points to specularum repo)
 .cursor/skills/agent-delegation
