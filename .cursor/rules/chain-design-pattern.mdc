@@ -1,0 +1,270 @@
+---
+description: when designing an agent-chain implementation chain for a task
+alwaysApply: false
+---
+# Agent Chain Design Pattern
+
+When designing an agent-chain implementation chain for a task, follow this standard structure. The pattern ensures every component is implemented, polished, and reviewed by alternating providers before the next component begins.
+
+The user specifies an **effort** level when requesting a chain design:
+
+- **effort** — holistic quality investment (`minimal`, `standard`, `thorough`, `comprehensive`, `exhaustive`)
+
+Effort controls three dimensions simultaneously: chain structure (how many review rounds), implementation depth (how careful the briefs instruct agents to be), and review depth (how detailed the review focus is).
+
+If not specified, defaults are profile-dependent:
+
+- **indie**: `effort=standard`
+- **enterprise**: `effort=thorough`
+
+## Core Pattern: Implement → (Auto-Improve) → Review → Integrate
+
+Each major component follows a cycle. The two agents alternate every step — the same provider never runs two consecutive steps.
+
+1. **Implement** — write the code or artifact (default: workhorse agent)
+2. **Improvement pass** (automatic, see §Cross-Provider Improvement Pass) — quality agent refines into codebase conventions
+3. **Adversarial review** (standard+) — opposite-provider agent reviews for correctness, safety, design
+4. **Review integration** (standard+) — quality agent addresses findings, verifies gates
+5. **Second-round review** (thorough+) — re-review after fixes
+6. **Second-round integration** (thorough+) — address second-round findings
+
+## Effort Levels
+
+Effort is a holistic quality dial. Each level specifies the chain structure (review rounds), the implementation brief depth (what the implementing agent is instructed to do), and the review brief depth (what the reviewing agent focuses on).
+
+### `minimal` — implement only, 0 reviews
+
+For low-risk changes where the gate is sufficient validation. The implementation brief still expects reasonable quality — main-path tests, basic error handling.
+
+**Chain structure:**
+
+```text
+implement → (auto-improve) → [gate]
+```
+
+**Implementation briefs** include: requirements, main-path tests, basic error handling.
+
+**Review briefs**: none (gate only).
+
+### `standard` — one review round
+
+The default quality level for indie work. "Do the job right" — edge cases handled, errors considered, decisions documented.
+
+**Chain structure:**
+
+```text
+implement → (auto-improve) → [gate] → adversarial-review → review-integration → [gate]
+```
+
+**Implementation briefs** include: requirements, comprehensive tests including edge cases, thorough error handling, documented design decisions.
+
+**Review briefs** include: general adversarial review for correctness, safety, and design quality.
+
+### `thorough` — two review rounds
+
+The default for enterprise, and for important indie work. Invest in exploration before coding. Fixes can introduce new issues — the second review round catches these.
+
+**Chain structure:**
+
+```text
+implement → (auto-improve) → [gate]
+  → adversarial-review → review-integration → [gate]
+  → second-review → second-integration → [gate]
+```
+
+**Implementation briefs** include: requirements, consider alternative approaches and document reasoning, security implications, comprehensive tests including boundary conditions and failure modes, documented design decisions and tradeoffs.
+
+**Review briefs** include: adversarial review with specific focus areas — error handling completeness, test coverage gaps, API consistency with existing codebase, security considerations.
+
+### `comprehensive` — two review rounds + specialized final passes
+
+For high-stakes work demanding deep analysis. The cross-cutting final review expands into multiple focused passes, each with a targeted checklist.
+
+**Chain structure:**
+
+```text
+implement → (auto-improve) → [gate]
+  → adversarial-review → review-integration → [gate]
+  → second-review → second-integration → [gate]
+  → [specialized final passes — see Final Phase]
+```
+
+**Implementation briefs** include: everything in thorough, plus threat modeling, property-based or generative tests where applicable, long-term maintenance analysis, explicit documentation of rejected alternatives with reasoning.
+
+**Review briefs** include: thorough-level general reviews, plus the final phase expands into multiple specialized review passes (e.g., security-focused, performance-focused, API-consistency-focused), each with a targeted checklist.
+
+### `exhaustive` — maximum quality investment
+
+Reserved for spare-no-expense scenarios. The concrete pattern will be refined based on experience. Candidates include: parallel independent implementations compared, formal verification passes, extended exploration phases, red-team exercises.
+
+**Chain structure**: comprehensive base + additional passes TBD.
+
+## Cross-Provider Improvement Pass
+
+**Automatic rule**: When the implementing agent is not the profile's quality agent, an improvement pass by the quality agent is inserted after the implement step. This is not an effort choice — it's cross-provider integration cleanup.
+
+The quality agent knows the codebase's style, import conventions, and test patterns. When a different-provider agent implements, the quality agent polishes before review, producing cleaner reviews with fewer style false-positives.
+
+**When the quality agent itself implements**, no improvement pass is inserted — the code is already in the codebase's voice, producing a shorter per-component cycle.
+
+Under request-optimized profiles, the improvement pass folds into the implementation brief ("Implement X. Then review your work for codebase style consistency before finishing.") rather than becoming a separate step.
+
+## Step Shape: Token-Optimized vs Request-Optimized
+
+Step shape is a fixed property of each profile, determined by billing model. It is not a user-facing knob — the profile sets it automatically.
+
+### Token-optimized (indie profiles)
+
+Token cost is the primary constraint. Request count doesn't matter.
+
+- **Small, focused steps.** Each step has a narrow scope and short brief.
+- **One component per implementation step.** Easier to debug failures, cheaper per-step.
+- **Independent review cycles.** Each component gets its own review before the next begins.
+- **Separate improvement pass step** when triggered by cross-provider implementation.
+- **Final phase is two+ steps** (cross-cutting review + integration/postmortem).
+
+More steps, lower per-step token usage. A failed step wastes fewer tokens.
+
+### Request-optimized (enterprise profiles)
+
+Request count is the primary constraint (e.g., 500 requests/engineer/month, unlimited tokens per request).
+
+- **Larger, combined steps.** Merge related components into fewer implementation steps when they share context.
+- **Fold improvement into implementation.** The implementation brief includes polish instructions rather than a separate step.
+- **Combine review integration with next implementation.** The brief for the next component starts with "First, address the findings from the previous review: [findings]. Then implement [next component]."
+- **Final phase can be a single step** combining review response, testing, and postmortem.
+- **Prefer higher `max_turns`** over more steps — let the agent iterate within a single request.
+
+Fewer, larger steps. Each request does more work to conserve the monthly budget.
+
+### How step shape interacts with effort
+
+Step counts below show the range for token-optimized profiles: lower when quality agent implements (no auto-improve), higher when workhorse implements (auto-improve inserted). Request-optimized profiles fold steps together as described above.
+
+| Effort        | Token-optimized (steps/component) | Request-optimized (steps/component)               |
+|---------------|-----------------------------------|---------------------------------------------------|
+| minimal       | 1–2                               | 1                                                 |
+| standard      | 3–4                               | 2 (integration folded into next step)             |
+| thorough      | 5–6                               | 3–4 (folds as above, second review kept separate) |
+| comprehensive | 5–6 + specialized final passes    | 3–4 + specialized final passes                    |
+
+## Agent Assignment
+
+Each profile defines two roles:
+
+- **Workhorse agent** — default first-pass implementer. Typically has more budget or is better suited for raw implementation.
+- **Quality agent** — improvement passes, review integration, docs. Typically the codebase's primary agent with stronger style/convention knowledge.
+
+**Default**: The workhorse agent implements every component. The quality agent handles improvement, integration, and docs. The two agents alternate steps throughout the chain.
+
+**Override — quality-agent implementation**: When a component heavily modifies existing code and benefits from deep codebase familiarity, the quality agent implements instead. Flag this per-component during chain design. No improvement pass is inserted, producing a shorter per-component cycle.
+
+**Reviewer assignment**: The adversarial reviewer is always the opposite provider from whoever last substantially edited the code. In practice the two agents simply alternate.
+
+## Phase Structure
+
+Group related steps into phases. Each phase completes a self-contained component with its own review cycle before the next phase begins. End with a cross-cutting final review phase.
+
+### Typical phase breakdown
+
+1. **Foundation/prerequisite work** — schema changes, shared types, infrastructure
+2. **Core implementation** — the main deliverable, often the largest component
+3. **Integration** — wiring the core into the existing system
+4. **Documentation and examples**
+5. **Final review and postmortem** — cross-cutting review of all changes, test suite, process writeup
+
+## Environment Profiles
+
+### Profile: `indie` (multi-provider, individual/small-business)
+
+Multiple provider subscriptions muxed together to spread token costs and get different architectural perspectives. No enterprise security or data-protection constraints on which providers can see the code.
+
+Available harnesses: `claude-code`, `codex-cli`
+Default effort: `effort=standard`
+Step shape: token-optimized
+
+| Role                            | Harness / Model       | Rationale                                          |
+|---------------------------------|-----------------------|----------------------------------------------------|
+| Workhorse (default implementer) | codex-cli / Codex 5.3 | More daily budget, effective at raw implementation |
+| Quality agent                   | claude-code / Opus    | Codebase conventions, polish, integration, docs    |
+| Adversarial reviewer            | (alternates)          | Whichever agent didn't last edit                   |
+
+**Default per-component flow** (standard effort):
+
+```text
+codex-cli implements → [gate]
+  → claude-code improves → [gate]
+  → codex-cli reviews
+  → claude-code integrates → [gate]
+```
+
+**Quality-agent implementation override** (for existing-code-heavy components):
+
+```text
+claude-code implements → [gate]
+  → codex-cli reviews
+  → claude-code integrates → [gate]
+```
+
+**Cost rationale**: codex-cli has the largest daily budget. Defaulting to codex-cli for first-pass implementation reserves claude-code budget for the higher-leverage quality and integration work where its codebase knowledge matters most.
+
+### Profile: `enterprise` (cursor-agent environment, e.g. CEGAI team)
+
+Available harnesses: `cursor-cli` (cursor-agent)
+Default effort: `effort=thorough`
+Step shape: request-optimized
+Budget constraint: ~500 requests/engineer/month (unlimited tokens per request)
+
+Cross-provider review is achieved by selecting models from different providers within cursor-cli.
+
+| Role                            | Harness / Model             | Rationale                                      |
+|---------------------------------|-----------------------------|------------------------------------------------|
+| Workhorse (default implementer) | cursor-cli / opus-4.6       | SOTA Anthropic model, strongest implementation |
+| Quality agent                   | cursor-cli / opus-4.6       | Same model (single-harness environment)        |
+| Adversarial reviewer            | cursor-cli / gemini-3.1-pro | Google model provides independent perspective  |
+
+In the enterprise profile, opus handles both implementation and quality since it's the strongest available model and the environment has a single harness. No cross-provider improvement pass is generated (workhorse = quality agent). The cross-provider benefit comes from gemini doing adversarial reviews. With unlimited tokens per request, `thorough` effort is the default — two review rounds cost only one extra request per component, which is cheap insurance. There is no reason to optimize tokens in this profile; the tradeoff is time vs quality.
+
+## Gates
+
+Every implementation and integration step should have a verification gate. Standard gates:
+
+- `make all` — full lint + typecheck + test suite (most steps)
+- `make lint` — lint only (docs-only steps)
+- `make test` — tests only (when typecheck is slow and not relevant)
+
+Review steps (read-only) do not have gates.
+
+## Final Phase
+
+At `standard` effort and above, every chain ends with a cross-cutting review phase:
+
+1. **Entire-process adversarial review** — the review agent examines all changes holistically
+2. **Final integration and postmortem** — the quality agent addresses final findings, runs the full test suite, and writes a process postmortem
+
+At `comprehensive` effort, the final phase expands: the cross-cutting review is split into multiple specialized passes (e.g., security review, performance review, API consistency review), each as a separate step with a targeted checklist. The final integration step addresses all specialized findings.
+
+When request-optimized, final-phase steps may be merged where feasible.
+
+The postmortem is a first-class deliverable, not an afterthought. It improves future chain designs.
+
+## Chain-Level Settings
+
+- `default_timeout` — set per-chain based on expected step complexity. The system default is `DEFAULT_STEP_TIMEOUT` (6 hours). Override to something tighter if steps are expected to be short.
+- `max_turns` — set per-step only when needed. Default is no limit (trust the agent). When request-optimized, prefer higher `max_turns` over more steps.
+- `working_dir` — point at a separate working copy to avoid modifying the design repo during execution.
+
+## Naming Convention
+
+Step names follow the pattern: `{component}-{role}`
+
+- `cursor-wrapper-implementation` (implement, workhorse)
+- `cursor-wrapper-improvement` (improve, quality agent)
+- `cursor-wrapper-adversarial-review` (review)
+- `cursor-wrapper-review-integration` (integrate, quality agent)
+
+Brief files follow: `{NN}-{step-name}.md` in a `{chain-name}-briefs/` directory alongside the chain TOML.
+
+## Model Version Note
+
+The specific model versions in the profiles above (Opus 4.6, Codex 5.3, Gemini 3.1 Pro) reflect SOTA at time of writing (2026-02-28). Update the profile when newer models are available — the pattern is stable, the model choices evolve.

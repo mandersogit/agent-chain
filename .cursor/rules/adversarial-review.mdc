@@ -1,0 +1,202 @@
+---
+description: after completing implementation tasks or plans of sufficient complexity
+alwaysApply: false
+---
+# Adversarial Review
+
+Adversarial review catches issues that the authoring agent is blind to — different model architectures have different blind spots. This applies to both **code** and **plans/specifications**.
+
+## Two Review Types
+
+### Type 1: Code Review
+
+After completing any implementation task of sufficient complexity, run an adversarial code review before reporting results to the user.
+
+**When to review code:**
+
+- New or modified code touching subprocess invocation, command construction, or shell escaping
+- Any security-relevant code (path handling, user input in templates, TOML parsing of untrusted input)
+- New module or significant refactor (roughly 50+ lines changed)
+- Backend implementations that construct CLI commands from user-controlled config
+- Template variable resolution (injection risks)
+
+**When to skip code review:**
+
+- Formatting, imports, or trivial renames
+- Changes under ~20 lines with obvious correctness
+
+### Type 2: Plan Review
+
+When a plan, specification, or design document has been iterated to a point where both you and the user consider it complete, **prompt the user**: "Would you like an adversarial review of this plan before we proceed?"
+
+If yes, the workflow is:
+
+1. **Run the review** via one or more agents (see tool selection below)
+2. **Assess each finding** — write a discussion document with your agreement/disagreement on each point
+3. **Present the assessment** to the user with a recommendation on which findings to integrate
+4. **Update the plan** based on the user's decisions
+
+**When to prompt for plan review:**
+
+- Implementation specifications that will drive coding work
+- Architecture or design documents that make binding decisions
+- Phased plans with time estimates and dependency ordering
+- Any document that, if wrong, would cause significant rework downstream
+
+**When to skip plan review:**
+
+- Workflow documents, handoffs, status reports
+- Documents that are exploratory or explicitly marked as drafts for discussion
+- Minor updates or clarifications to existing plans
+
+## Tool Selection for Reviews
+
+Run reviews in parallel across models for broader coverage. Each model finds different issues.
+
+| Strategy          | When to use                | Configuration                                                  |
+|-------------------|----------------------------|----------------------------------------------------------------|
+| Quick single-pass | Low-stakes, time-sensitive | codex-cli only                                                 |
+| Standard review   | Normal adversarial reviews | codex-cli + Claude Code (Haiku) in parallel                    |
+| Thorough review   | High-stakes steering docs  | codex-cli + Claude Code (Opus) in parallel, Cursor synthesizes |
+
+## How to Run
+
+### codex-cli code review
+
+```bash
+codex exec --json \
+  --sandbox read-only \
+  -c model_reasoning_effort='"high"' \
+  -C ~/git/github/agent-chain \
+  -o workflow/tasks-codex/review-{name}/output.json \
+  "Review {file-or-description} for correctness, safety, and design issues. Focus on: {concerns}. Rate findings as CRITICAL, MODERATE, or LOW. Be honest — don't manufacture findings." \
+  2>workflow/tasks-codex/review-{name}/stderr.log \
+  > workflow/tasks-codex/review-{name}/events.jsonl
+```
+
+### codex-cli plan review
+
+```bash
+codex exec --full-auto --json \
+  -c model_reasoning_effort='"high"' \
+  -C ~/git/github/agent-chain \
+  -o workflow/tasks-codex/review-{name}/output.json \
+  - < workflow/tasks-codex/review-{name}/task.md \
+  2>workflow/tasks-codex/review-{name}/stderr.log \
+  > workflow/tasks-codex/review-{name}/events.jsonl
+```
+
+Use `--full-auto` for plan reviews — the reviewer needs to read multiple files across the project, which `--sandbox read-only` may restrict. Despite allowing writes, a well-prompted reviewer won't modify files. Use `--sandbox read-only` for code reviews where the files under review are already in the prompt.
+
+### Claude Code review (either type)
+
+```bash
+cd ~/git/github/agent-chain && cat workflow/tasks-claude-code/review-{name}/task.md \
+  | ~/.local/bin/claude -p \
+    --permission-mode plan \
+    --model opus --effort high \
+    --output-format json \
+    2>workflow/tasks-claude-code/review-{name}/stderr.log \
+    > workflow/tasks-claude-code/review-{name}/raw.json
+```
+
+`--permission-mode plan` restricts Claude to read-only operations. Always use for reviews.
+
+### codex-cli quick review (convenience, no telemetry)
+
+For low-stakes reviews where full telemetry isn't needed:
+
+```bash
+codex review --uncommitted \
+  "Focus on: correctness of subprocess invocation, command escaping, TOML parsing safety, template variable injection, error handling at backend boundaries." \
+  > workflow/tasks-codex/review-{name}/output.md
+```
+
+Limitations: plain text output only, no `--json`/`--output-schema`, may use `review_model` from config.
+
+## Plan Review Prompt Template
+
+Use this structure when writing `task.md` for plan reviews:
+
+> Adversarial review of {document-path} — {brief description of what it is}.
+>
+> Context you should also read:
+>
+> - {related-document-1}
+> - {related-document-2}
+>
+> Review for:
+>
+> 1. Technical correctness — are assumptions valid? Are there things stated as facts that are wrong or unverified?
+> 2. Completeness gaps — what's missing that would block implementation?
+> 3. Architectural risks — decisions that look reasonable on paper but will cause problems in practice
+> 4. Phasing/dependency risks — hidden dependencies, unrealistic sequencing, estimates that don't account for known obstacles
+> 5. Scope risks — anything dramatically underestimated or overestimated
+>
+> Rate each finding as CRITICAL (will cause implementation failure), MODERATE (will cause significant rework), or LOW (style/improvement). Be honest — if sections are solid, say so. Don't manufacture findings.
+
+## Execution Procedure
+
+Reviews can take 2-15 minutes. **Always run them in the background** to avoid blocking the Cursor session and wasting context window on streaming output.
+
+1. **Background the command.** Use `block_until_ms: 0` so the shell call returns immediately.
+2. **Monitor by polling the terminal file.** Sleep and check the tail of the terminal output for the `exit_code:` footer. Do not read the full terminal output — it contains streaming reasoning which is large and not useful.
+3. **Read only the output file.** Once the command finishes, read the output file — this is the review artifact. Never read the full terminal/command output into context.
+
+**Why this matters:** Agents stream reasoning to the terminal. If the Cursor agent reads terminal output into context, it wastes thousands of tokens on intermediate reasoning that has no value — only the final output file matters.
+
+## Review Prompt Guidelines
+
+Tailor the review focus to what's being reviewed. Always include:
+
+- The specific technical domain (subprocess handling, TOML chain definitions, template variables, CLI argument construction, backend protocol)
+- The severity rating instruction (CRITICAL / MODERATE / LOW)
+- An honesty instruction — "don't manufacture findings" or "if the code is correct, say so"
+- For plan reviews: pointers to related context documents the reviewer should read
+
+## Two-Round Review for Implementation
+
+For implementation work (code reviews after a significant feature), **two rounds of adversarial review are standard**.
+
+1. **First round:** Review the implementation. Fix all CRITICAL and MODERATE findings.
+2. **Second round:** Review the fixes from the first round. Fixes can introduce new issues or be incomplete — the second round catches these.
+
+The second round is not optional. Even if you believe your fixes are complete, run the second round. The implementing agent cannot reliably judge the completeness of its own fixes.
+
+For plan reviews, a single round is typically sufficient unless the review produces substantial structural changes.
+
+## What to Do with Findings
+
+### Self-Assessment Discipline
+
+When reviewing findings on **code you authored**, apply extra scrutiny to your own instinct to defer:
+
+1. **Default assumption:** Findings on code you wrote are your responsibility. You authored the code; fixing it is part of the task, not a separate future task.
+2. **Only defer if** the fix requires functionality that does not yet exist (e.g., a future feature needed to fix a current finding). "It's a lot of work" or "it's not on the critical path" are not valid deferral reasons for defects in code you just wrote.
+3. **Post-review self-check:** Before presenting findings to the user, ask yourself: "If someone else wrote this code and I found these issues in review, would I accept 'later' as a response?" If not, fix it.
+4. **The task is not complete until findings are addressed.** Adversarial review is part of the implementation task, not an addendum. Do not mark a task as COMPLETE and then treat findings as optional follow-ups.
+
+### Code review findings
+
+1. **CRITICAL findings:** Fix before reporting to the user. Mention the finding and fix in your report.
+2. **MODERATE findings:** Fix if straightforward. If the fix is non-trivial or debatable, flag it to the user.
+3. **LOW findings:** Note for future cleanup. Don't block on these.
+4. **False positives:** Discard. Note them if they reveal something about review prompt quality.
+
+### Plan review findings
+
+1. **Write a discussion document** (`workflow/{date}-{plan-name}-review.md`) assessing each finding: agree, disagree, or partially agree, with reasoning.
+2. **Present to the user** with a summary: which findings you recommend integrating, which you recommend deferring, and which you disagree with.
+3. **Integrate changes** only after user review of the assessment. Plan updates are collaborative — the reviewer doesn't get unilateral veto.
+
+## Reporting to the User
+
+When reporting results that included adversarial review:
+
+- **Substantive findings:** Briefly describe what was found and fixed/flagged. "Codex review caught a command injection risk in backend command construction — fixed." or "Plan review found a phase dependency error — assessment in the discussion document."
+- **Clean review:** One line. "Review: no issues found."
+- **Don't hide reviews.** The user wants visibility into the process.
+
+## Output Location
+
+Review outputs go in `workflow/tasks-{tool}/review-{name}/`. These are persistent artifacts the user can inspect. Create the directory if it doesn't exist.
